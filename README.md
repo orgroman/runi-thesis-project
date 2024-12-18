@@ -1,1 +1,1 @@
-# runi-thesis-embedding
+# runi-thesis-project
