@@ -1,12 +1,47 @@
 import argparse
+import logging
 
+logger = logging.getLogger(__name__)
+def remove_dependent():
+    pass
+    
+def main(args):
+    if args.sub_command == "train_model":
+        print(f"Running `train_model` with:")
+        print(f"Train input: {args.train_input}")
+        print(f"Train output directory: {args.train_output_dir}")
+    elif args.sub_command == "remove_dependent":
+        print(f"Running `remove_dependent` with:")
+        print(f"Input TSV: {args.input_tsv}")
+        print(f"Output TSV: {args.output_tsv}")
+        print(f"Column: {args.column}")
+    elif args.sub_command == "run_negation_detection_model":
+        print(f"Running `run_negation_detection_model` with:")
+        print(f"Input TSV: {args.input_tsv}")
+        print(f"Output TSV: {args.output_tsv}")
+        print(f"Column: {args.column}")
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="CLI for the research thesis different pipelines and experiments"
     )
     
     # Add subparsers to handle multiple commands
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="sub_command")
+    
+    parser.add_argument(
+        "--command", help="Command to run", required=False, type=str, choices=["remove_dependent"]
+    )
+    train_model_p = subparsers.add_parser(
+        "train_model",
+        help="Train a model on the input dataset",
+    )
+    train_model_p.add_argument(
+        "--train_input", help="Input dataset to train the model on", required=False, type=str
+    )
+    train_model_p.add_argument(
+        "--train_output_dir", help="Output directory to save the trained model", default="output", type=str
+    )
     
     # Define the `remove_dependent` subcommand
     remove_dependent_claims_p = subparsers.add_parser(
@@ -23,12 +58,20 @@ if __name__ == "__main__":
         "--column", help="Column to remove dependent claims from", required=True, type=str
     )
     
+    run_negation_detection_model_p = subparsers.add_parser(
+        "run_negation_detection_model",
+        help="Run the negation detection model on the input dataset",
+    )
+    run_negation_detection_model_p.add_argument(
+        "--input_tsv", help="Input dataset to run the negation detection model on", required=True, type=str
+    )
+    run_negation_detection_model_p.add_argument(
+        "--output_tsv", help="Output dataset to save the results to", default="output.tsv", type=str
+    )
+    run_negation_detection_model_p.add_argument(
+        "--column", help="Column to run the negation detection model on", required=True, type=str
+    )
+    
     # Parse arguments
     args = parser.parse_args()
-
-    # Example: Handle commands
-    if args.command == "remove_dependent":
-        print(f"Running `remove_dependent` with:")
-        print(f"Input TSV: {args.input_tsv}")
-        print(f"Output TSV: {args.output_tsv}")
-        print(f"Column: {args.column}")
+    main(args)

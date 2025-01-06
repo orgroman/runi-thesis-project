@@ -11,10 +11,12 @@
             "program": "${workspaceFolder}/cli.py",
             "console": "integratedTerminal",
             "args": [
+                // "train_model",
+                // "--train_input", "train.tsv",
                 "remove_dependent",
                 "--input_tsv", "myfile.tsv",
                 "--output_tsv", "output.tsv",
-                "--column", "text"
+                "--column", "text",
             ]
         }
     ]
