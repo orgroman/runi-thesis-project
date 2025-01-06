@@ -1,0 +1,5 @@
+version: '3'
+tasks:
+  download_patentmatch_dataset:
+    cmds:
+    - curl -X GET "https://my.hidrive.com/api/meta?pid=b1688488270.32&fields=id%2Cname" -o "metadata.json"
