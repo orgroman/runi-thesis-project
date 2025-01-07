@@ -1,11 +1,16 @@
 [project]
-name = "runi-thesis-research"
+name = "runi-thesis-project"
 version = "0.1.0"
 description = "A short description of the project."
 readme = "README.md"
-dependencies = []
+dependencies = [
+    "aiohttp>=3.11.11",
+]
 
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.workspace]
+members = ["runi-thesis-project"]

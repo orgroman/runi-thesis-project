@@ -7,20 +7,19 @@ def remove_dependent():
     
 def main(args):
     if args.sub_command == "train_model":
-        print(f"Running `train_model` with:")
-        print(f"Train input: {args.train_input}")
-        print(f"Train output directory: {args.train_output_dir}")
+        logger.info(f"Running `train_model` with:\n"
+                    f"Train input: {args.train_input}\n"
+                    f"Train output directory: {args.train_output_dir}")        
     elif args.sub_command == "remove_dependent":
-        print(f"Running `remove_dependent` with:")
-        print(f"Input TSV: {args.input_tsv}")
-        print(f"Output TSV: {args.output_tsv}")
-        print(f"Column: {args.column}")
+        logger.info(f"Running `remove_dependent` with:\n"
+                    f"Input TSV: {args.input_tsv}\n"
+                    f"Output TSV: {args.output_tsv}\n"
+                    f"Column: {args.column}")
     elif args.sub_command == "run_negation_detection_model":
-        print(f"Running `run_negation_detection_model` with:")
-        print(f"Input TSV: {args.input_tsv}")
-        print(f"Output TSV: {args.output_tsv}")
-        print(f"Column: {args.column}")
-    
+        logger.info(f"Running `run_negation_detection_model` with:\n"
+                    f"Input TSV: {args.input_tsv}\n"
+                    f"Output TSV: {args.output_tsv}\n"
+                    f"Column: {args.column}")            
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="CLI for the research thesis different pipelines and experiments"
