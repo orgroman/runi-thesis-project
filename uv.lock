@@ -268,15 +268,40 @@ wheels = [
 ]
 
 [[package]]
+name = "pydash"
+version = "8.0.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/18/02df732cb657f14997ee4c9d93006e61e93a1816cfdc23763a86c78f9b61/pydash-8.0.4.tar.gz", hash = "sha256:a33fb17b4b06c617da5c57c711605d2dc8723311ee5388c8371f87cd44bf4112", size = 164676 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/49/c4/746eb7637eb11149a67469c16023eb6e6fa6aa62dc31d1f0a569393c3745/pydash-8.0.4-py3-none-any.whl", hash = "sha256:59d0c9ca0d22b4f8bcfab01bfe2e89b49f4c9e9fa75961caf156094670260999", size = 101938 },
+]
+
+[[package]]
 name = "runi-thesis-project"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "pydash" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "aiohttp", specifier = ">=3.11.11" }]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.11.11" },
+    { name = "pydash", specifier = ">=8.0.4" },
+]
+
+[[package]]
+name = "typing-extensions"
+version = "4.12.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/db/f35a00659bc03fec321ba8bce9420de607a1d37f8342eee1863174c69557/typing_extensions-4.12.2.tar.gz", hash = "sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8", size = 85321 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/26/9f/ad63fc0248c5379346306f8668cda6e2e2e9c95e01216d2b8ffd9ff037d0/typing_extensions-4.12.2-py3-none-any.whl", hash = "sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d", size = 37438 },
+]
 
 [[package]]
 name = "yarl"

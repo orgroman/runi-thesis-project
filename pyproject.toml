@@ -5,6 +5,7 @@ description = "A short description of the project."
 readme = "README.md"
 dependencies = [
     "aiohttp>=3.11.11",
+    "pydash>=8.0.4",
 ]
 
 
