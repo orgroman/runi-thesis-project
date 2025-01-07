@@ -1,5 +1,6 @@
 import argparse
 import logging
+from runi_thesis_project.config_loader import load_configs
 
 logger = logging.getLogger(__name__)
 def remove_dependent():
