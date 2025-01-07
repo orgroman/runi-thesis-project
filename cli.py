@@ -1,5 +1,7 @@
 import argparse
 import logging
+import os
+from pathlib import Path
 from runi_thesis_project.config_loader import load_configs
 
 logger = logging.getLogger(__name__)
@@ -7,6 +9,10 @@ def remove_dependent():
     pass
     
 def main(args):
+    config_dir = os.getenv("CONFIG_DIR",  str(Path.cwd() / "configs"))
+    config = load_configs(config_dir)
+    logger.info(f"Loading configs from {config_dir}")
+    
     if args.sub_command == "train_model":
         logger.info(f"Running `train_model` with:\n"
                     f"Train input: {args.train_input}\n"
