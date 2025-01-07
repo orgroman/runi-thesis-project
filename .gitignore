@@ -1,3 +1,5 @@
 HiDrive.zip
 hidrive/
 .venv/
+
+*.pyc
