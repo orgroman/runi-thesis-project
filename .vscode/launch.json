@@ -16,11 +16,16 @@
             "args": [
                 // "train_model",
                 // "--train_input", "train.tsv",
-                "remove_dependent",
-                "--input_tsv", "myfile.tsv",
-                "--output_tsv", "output.tsv",
+                "run_negation_detection_model",
+                "--input_tsv", "C:\\workspace_or_private\\repos\\runi-thesis-project\\hidrive\\patentmatch_test\\patentmatch_test.tsv",                
                 "--column", "text",
             ]
+        },
+        {
+            "name": "debug aiopika df",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/runi_thesis_project/clients/aiopika_df.py"            
         }
     ]
 }

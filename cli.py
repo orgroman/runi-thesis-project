@@ -1,8 +1,10 @@
 import argparse
 import logging
 import os
+import pandas as pd
 from pathlib import Path
 from runi_thesis_project.config_loader import load_configs
+from pydash import get
 
 logger = logging.getLogger(__name__)
 def remove_dependent():
@@ -23,12 +25,30 @@ def main(args):
                     f"Output TSV: {args.output_tsv}\n"
                     f"Column: {args.column}")
     elif args.sub_command == "run_negation_detection_model":
-        from runi_thesis_project.models.negation_detection.client import create_model
-        negation_model = create_model(**config["models.negation_detection"])
+        from runi_thesis_project.models.negation_detection.llamafile import LLamaFileModel
+        negation_model = LLamaFileModel.create_model(**get(config, "models.negation_detection"))
         logger.info(f"Running `run_negation_detection_model` with:\n"
                     f"Input TSV: {args.input_tsv}\n"
                     f"Output TSV: {args.output_tsv}\n"
-                    f"Column: {args.column}")            
+                    f"Column: {args.column}")
+        
+        # Read the input TSV
+        df = pd.read_csv(args.input_tsv, sep='\t')
+        
+        # Run the negation detection model
+        async def run_model():
+            results = []
+            for text in df[args.column]:
+                result = await negation_model.apredict_text(text)
+                results.append(result)
+            return results
+        
+        import asyncio
+        df['negation_detected'] = asyncio.run(run_model())
+        
+        # Write the results to the output TSV
+        df.to_csv(args.output_tsv, sep='\t', index=False)
+            
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="CLI for the research thesis different pipelines and experiments"
