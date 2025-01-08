@@ -23,7 +23,8 @@ def main(args):
                     f"Output TSV: {args.output_tsv}\n"
                     f"Column: {args.column}")
     elif args.sub_command == "run_negation_detection_model":
-        from runi_thesis_project.models.negation_detection.llamafile import LLamaFileModel
+        from runi_thesis_project.models.negation_detection.client import create_model
+        negation_model = create_model(**config["models.negation_detection"])
         logger.info(f"Running `run_negation_detection_model` with:\n"
                     f"Input TSV: {args.input_tsv}\n"
                     f"Output TSV: {args.output_tsv}\n"
