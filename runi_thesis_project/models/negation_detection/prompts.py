@@ -151,11 +151,13 @@ Short Explanation: [1–2 sentences referencing key negation cues]
 1. **Identify** whether the given **patent-oriented** text contains negation (`True` or `False`).  
 2. If **True**, list **all** relevant negation types (morphological, syntactic, constituent, lexical, NPI).  
 3. Give a **Short Explanation** (1–2 sentences) pointing to the specific negation cues or context.  
-4. **Output** in the specified code block format:
+4. **Output** in the specified json format (You must produce a valid JSON object).:
 
 ```
-Negation Present: True/False
-Negation Type(s): [List or None]
-Short Explanation: [Brief explanation]
+{
+  "negation_present": True/False,
+  "negation_types": [List or None],
+  "short_explanation": "Brief explanation"
+}
 ```
 """

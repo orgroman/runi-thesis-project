@@ -8,6 +8,9 @@ from runi_thesis_project.config_loader import load_configs
 from runi_thesis_project.clients.aiopika_df import AioPikaDataFrameClient
 from pydash import get
 import tqdm
+from pydantic import BaseModel
+from typing import List, Optional
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +39,101 @@ def main(args):
             f"Output TSV: {args.output_tsv}\n"
             f"Column: {args.column}"
         )
+    elif args.sub_command == "prepare_jsonl_column":
+        # Load the input csv, split to batches of 25,000 rows max each and prepare for openai
+        logger.info(f"Reading input file from: {args.input_tsv}")
+        file_type = Path(args.input_tsv).suffix
+        sep = "\t" if file_type == ".tsv" else ","
+        df = pd.read_csv(args.input_tsv, sep=sep)
+        column = args.column
+        output_dir = Path.cwd() / f"output_jsonl_{column}"
+        output_dir.mkdir(exist_ok=True)
+        batch_size = 25000
+        num_batches = len(df) // batch_size + 1
+        class NegationResponse(BaseModel):
+            negation_present: bool
+            negation_types: Optional[List[str]]
+            short_explanation: str
+    
+        from runi_thesis_project.models.negation_detection.prompts import NEGATION_PROMPT_DETAILED
+        def jsonl_openai_line(row):
+            text = row[column]
+            messages = [
+                {
+                    "role": "system",
+                    "content": NEGATION_PROMPT_DETAILED
+                },
+                {
+                    "role": "user",
+                    "content": f"Analyze the following text: {text}"
+                }
+            ]
+            body = {
+                "model": "gpt-4o-mini",
+                "messages": messages,
+                # This is the Beta Chat Completion parse approach:
+                # We instruct it to parse the output into our Pydantic model
+                "response_format": {
+                    "type": "json_schema",
+                    "schema": NegationResponse.schema()  # The Pydantic model's JSON schema
+                },
+                "max_tokens": 500
+            }
+            patent_application_id = row["patent_application_id"]
+            custom_id = f'request_{column}_{patent_application_id}'
+            line = {
+                "custom_id": custom_id,
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": body
+            }
+            return line
+        
+        for i in range(num_batches):
+            start_idx = i * batch_size
+            end_idx = (i + 1) * batch_size
+            batch_df = df.iloc[start_idx:end_idx]
+            logger.info(f"Preparing batch {i + 1}/{num_batches} with {len(batch_df)} rows")
+            lines = batch_df.apply(jsonl_openai_line, axis=1)
+            with open(output_dir / f"batch_{i}.jsonl", "w") as f:
+                for line in lines:
+                    f.write(f"{line}\n")
+            
+                    
+        
+        
     elif args.sub_command == "run_negation_detection_model":
         pass
+        # logger.info(f"Reading input file from: {args.input_tsv}")
+        # file_type = Path(args.input_tsv).suffix
+        # sep = "\t" if file_type == ".tsv" else ","
+        # df = pd.read_csv(args.input_tsv, sep=sep)
+        
+        # from runi_thesis_project.models.negation_detection.prompts import NEGATION_PROMPT_DETAILED
+        # from openai import AsyncOpenAI
+        # api_key = os.getenv("THESIS_ALON_OPENAI_API_KEY")
+        # async_client = AsyncOpenAI(api_key=api_key)
+        
+        # # Split the df into batches of max 25,000 rows each to avoid hitting the OpenAI API limits
+        # # Use OpenAI batch completion API to run the model on each batch
+        # # Concatenate the results and write them to the output csv when done
+        # batch_size = 25000
+        # num_batches = len(df) // batch_size + 1
+        # results = []
+        # for i in range(num_batches):
+        #     start_idx = i * batch_size
+        #     end_idx = (i + 1) * batch_size
+        #     batch_df = df.iloc[start_idx:end_idx]
+        #     logger.info(f"Running batch {i + 1}/{num_batches} with {len(batch_df)} rows")
+        #     batch_results = await asyncio.gather(
+        #         *[async_client.complete_chat(NEGATION_PROMPT_DETAILED, text) for text in batch_df[args.column]]
+        #     )
+        #     results.extend(batch_results)
+            
+        
+        
+        
+        
     
         
 #         logger.info(f"Read {len(df)} rows from {args.input_tsv}")
