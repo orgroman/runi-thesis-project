@@ -3,6 +3,24 @@ import json
 import pandas as pd
 import aio_pika
 from aio_pika.abc import AbstractChannel, AbstractQueue
+import zlib
+
+def compress_body(data: bytes, level: int = 6) -> bytes:
+    """
+    Compress byte data using zlib.
+    :param data: The raw bytes to compress.
+    :param level: Compression level (1-9). Default is 6 for a balance of speed/size.
+    :return: Compressed bytes.
+    """
+    return zlib.compress(data, level)
+
+def decompress_body(data: bytes) -> bytes:
+    """
+    Decompress zlib-compressed byte data.
+    :param data: The compressed bytes.
+    :return: Decompressed (original) bytes.
+    """
+    return zlib.decompress(data)
 
 class AioPikaDataFrameClient:
     """
@@ -11,6 +29,8 @@ class AioPikaDataFrameClient:
       - Publishes a Pandas DataFrame row-by-row (each row serialized as dict->JSON) to an input queue.
       - Consumes from the input queue, transforms each row, and re-publishes to a results queue.
       - Consumes from the results queue to build a final DataFrame in memory.
+
+    Now with optional compression support.
     """
 
     def __init__(
@@ -18,11 +38,15 @@ class AioPikaDataFrameClient:
         amqp_url: str = "amqp://guest:guest@127.0.0.1/",
         input_queue_name: str = "df_queue",
         results_queue_name: str = "df_results_queue",
+        compression_enabled: bool = True,
+        compression_level: int = 6,
     ):
         """
         :param amqp_url: Connection string to RabbitMQ.
         :param input_queue_name: The name of the queue for DF messages to be transformed.
         :param results_queue_name: The name of the queue for transformed DF messages.
+        :param compression_enabled: Whether to compress the JSON payload before publishing.
+        :param compression_level: Compression level (1-9) if compression is enabled.
         """
         self.amqp_url = amqp_url
         self.input_queue_name = input_queue_name
@@ -33,6 +57,9 @@ class AioPikaDataFrameClient:
         self.input_queue: AbstractQueue | None = None
         self.results_queue: AbstractQueue | None = None
 
+        self.compression_enabled = compression_enabled
+        self.compression_level = compression_level
+
     async def connect(self) -> None:
         """
         Establish a robust connection and declare both the input and results queues.
@@ -40,11 +67,13 @@ class AioPikaDataFrameClient:
         self.connection = await aio_pika.connect_robust(self.amqp_url)
         # Create channel with publisher confirms to ensure reliability
         self.channel = await self.connection.channel(publisher_confirms=True)
+        await self.channel.set_qos(prefetch_count=5)
 
         # Declare the input queue (from which we consume)
         self.input_queue = await self.channel.declare_queue(
             self.input_queue_name, durable=True
         )
+
         # Declare the results queue (to which we publish)
         self.results_queue = await self.channel.declare_queue(
             self.results_queue_name, durable=True
@@ -73,6 +102,10 @@ class AioPikaDataFrameClient:
             row_dict = row.to_dict()
             body = json.dumps(row_dict).encode("utf-8")
 
+            # Compress if enabled
+            if self.compression_enabled:
+                body = compress_body(body, level=self.compression_level)
+
             message = aio_pika.Message(
                 body=body,
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT
@@ -94,6 +127,11 @@ class AioPikaDataFrameClient:
         transformed_dict = await transform_callback(row_dict)
 
         body = json.dumps(transformed_dict).encode("utf-8")
+
+        # Compress if enabled
+        if self.compression_enabled:
+            body = compress_body(body, level=self.compression_level)
+
         msg = aio_pika.Message(
             body=body,
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT
@@ -123,7 +161,12 @@ class AioPikaDataFrameClient:
         async with self.input_queue.iterator() as queue_iter:
             async for message in queue_iter:
                 async with message.process():
-                    row_dict = json.loads(message.body)
+                    # Decompress if needed
+                    raw_body = message.body
+                    if self.compression_enabled:
+                        raw_body = decompress_body(raw_body)
+
+                    row_dict = json.loads(raw_body)
                     await self.transform_row_and_republish(
                         row_dict, transform_callback
                     )
@@ -156,7 +199,12 @@ class AioPikaDataFrameClient:
         async with self.results_queue.iterator() as queue_iter:
             async for message in queue_iter:
                 async with message.process():
-                    row_dict = json.loads(message.body)
+                    # Decompress if needed
+                    raw_body = message.body
+                    if self.compression_enabled:
+                        raw_body = decompress_body(raw_body)
+
+                    row_dict = json.loads(raw_body)
                     results.append(row_dict)
 
                 count += 1
@@ -194,6 +242,8 @@ async def main():
         amqp_url="amqp://admin:password@127.0.0.1/",
         input_queue_name="df_queue",
         results_queue_name="df_results_queue",
+        compression_enabled=True,      # Enable or disable compression
+        compression_level=6            # Adjust compression level as desired
     )
 
     # 1. Connect and publish the original DataFrame

@@ -6,7 +6,9 @@ readme = "README.md"
 dependencies = [
     "aio-pika>=9.5.4",
     "aiohttp>=3.11.11",
+    "openai>=1.59.5",
     "pydash>=8.0.4",
+    "tqdm>=4.67.1",
 ]
 
 

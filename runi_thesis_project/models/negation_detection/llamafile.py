@@ -1,10 +1,12 @@
 import asyncio
 from aiohttp import ClientSession
+import openai
 
 class LLamaFileModel:
     def __init__(self, endpoint_url="http://localhost:8080/v1/chat/completions", **kwargs):
         # Default endpoint points to the OpenAI-compatible chat completions endpoint
         self.url = endpoint_url
+        self._client = openai.AsyncOpenAI(base_url="http://localhost:8080/v1", api_key = "sk-no-key-required")
 
     @classmethod
     def create_model(cls, **kwargs):
@@ -14,20 +16,28 @@ class LLamaFileModel:
         """
         Send the messages to the llamafile chat completions endpoint and return the JSON response.
         """
-        payload = {
-            "model": "LLaMA_CPP",
-            "messages": messages
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer no-key"
-        }
+        # payload = {
+        #     "model": "LLaMA_CPP",
+        #     "messages": messages
+        # }
+        # headers = {
+        #     "Content-Type": "application/json",
+        #     "Authorization": "Bearer no-key"
+        # }
         
-        async with ClientSession() as session:
-            async with session.post(self.url, json=payload, headers=headers) as response:
-                # Return the full JSON response
-                result = await response.json()
-                return result
+        result = await self._client.chat.completions.create(
+            model="LLaMA_CPP",
+            messages=messages,
+            max_completion_tokens=5,
+            max_tokens=5
+        )
+        return result
+        
+        # async with ClientSession() as session:
+        #     async with session.post(self.url, json=payload, headers=headers) as response:
+        #         # Return the full JSON response
+        #         result = await response.json()
+        #         return result
 
 # Example usage:
 async def main():
