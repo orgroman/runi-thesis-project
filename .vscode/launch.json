@@ -22,6 +22,29 @@
             ]
         },
         {
+            "name": "cli - create jsonl",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/cli.py",
+            "console": "integratedTerminal",
+            "env": {
+                "CONFIG_DIR": "${workspaceFolder}/configs",
+            },
+            "args": [
+                // "train_model",
+                // "--train_input", "train.tsv",
+                "prepare_jsonl_column",
+                "--input_tsv", "C:\\workspace_or_private\\repos\\runi-thesis-project\\hidrive\\patentmatch_test\\patentmatch_test_no_claims.csv",                
+                "--column", "text",
+            ]
+        },
+        {
+            "name": "Debug - file",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}"
+        },
+        {
             "name": "debug aiopika df",
             "type": "debugpy",
             "request": "launch",

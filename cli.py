@@ -10,7 +10,7 @@ from pydash import get
 import tqdm
 from pydantic import BaseModel
 from typing import List, Optional
-
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +46,18 @@ def main(args):
         sep = "\t" if file_type == ".tsv" else ","
         df = pd.read_csv(args.input_tsv, sep=sep)
         column = args.column
-        output_dir = Path.cwd() / f"output_jsonl_{column}"
+        output_dir = Path(args.input_tsv).parent / f"output_jsonl_{column}"
         output_dir.mkdir(exist_ok=True)
-        batch_size = 25000
+        batch_size = 5000
         num_batches = len(df) // batch_size + 1
+
         class NegationResponse(BaseModel):
             negation_present: bool
             negation_types: Optional[List[str]]
             short_explanation: str
-    
+
         from runi_thesis_project.models.negation_detection.prompts import NEGATION_PROMPT_DETAILED
+
         def jsonl_openai_line(row):
             text = row[column]
             messages = [
@@ -75,12 +77,13 @@ def main(args):
                 # We instruct it to parse the output into our Pydantic model
                 "response_format": {
                     "type": "json_schema",
-                    "schema": NegationResponse.schema()  # The Pydantic model's JSON schema
+                    "schema": NegationResponse.model_json_schema()  # The Pydantic model's JSON schema
                 },
                 "max_tokens": 500
             }
             patent_application_id = row["patent_application_id"]
-            custom_id = f'request_{column}_{patent_application_id}'
+            row_index = row["index"]
+            custom_id = f'request_{column}_{patent_application_id}_{row_index}'
             line = {
                 "custom_id": custom_id,
                 "method": "POST",
@@ -88,17 +91,20 @@ def main(args):
                 "body": body
             }
             return line
-        
+
         for i in range(num_batches):
             start_idx = i * batch_size
             end_idx = (i + 1) * batch_size
             batch_df = df.iloc[start_idx:end_idx]
             logger.info(f"Preparing batch {i + 1}/{num_batches} with {len(batch_df)} rows")
             lines = batch_df.apply(jsonl_openai_line, axis=1)
-            with open(output_dir / f"batch_{i}.jsonl", "w") as f:
+
+            with open(output_dir / f"batch_{i}.jsonl", "w", encoding='utf-8') as f:
                 for line in lines:
-                    f.write(f"{line}\n")
-            
+                    # Use json.dumps() to ensure valid JSON is written
+                    f.write(json.dumps(line, ensure_ascii=False))
+                    f.write("\n")
+                
                     
         
         
@@ -280,6 +286,23 @@ if __name__ == "__main__":
         help="Column to run the negation detection model on",
         required=True,
         type=str,
+    )
+    
+    create_jsonl_p = subparsers.add_parser(
+        "prepare_jsonl_column",
+        help="Prepare the input TSV file for OpenAI API by splitting it into JSONL files"
+    )
+    create_jsonl_p.add_argument(
+        "--input_tsv",
+        help="Input TSV file to prepare for OpenAI API",
+        required=True,
+        type=str
+    )
+    create_jsonl_p.add_argument(
+        "--column",
+        help="Column to prepare for OpenAI API",
+        required=True,
+        type=str
     )
 
     # Parse arguments
