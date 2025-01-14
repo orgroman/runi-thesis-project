@@ -35,7 +35,14 @@ def jsonl_openai_line(row, column):
         # We instruct it to parse the output into our Pydantic model
         "response_format": {
             "type": "json_schema",
-            "schema": NegationResponse.model_json_schema()  # The Pydantic model's JSON schema
+            "json_schema": {
+                "name": "negation_response",
+                "schema": {
+                    "type": "object",
+                    "strict": True,
+                    **NegationResponse.model_json_schema()  # The Pydantic model's JSON schema                    
+                }                
+                }
         },
         "max_tokens": 500
     }
@@ -53,7 +60,7 @@ def jsonl_openai_line(row, column):
 def main():
     tqdm.pandas()
     # Load the input csv, split to batches of 25,000 rows max each and prepare for openai
-    column = 'text_b'
+    column = 'text'
     input_file = Path(r'C:\workspace_or_private\repos\runi-thesis-project\hidrive\patentmatch_train\patentmatch_train_no_claims.csv')
     logger.info(f"Reading input file from: {input_file}")    
     file_type = input_file.suffix
