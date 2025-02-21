@@ -61,7 +61,7 @@ def main():
     tqdm.pandas()
     # Load the input csv, split to batches of 25,000 rows max each and prepare for openai
     column = 'text'
-    input_file = Path(r'C:\workspace_or_private\repos\runi-thesis-project\hidrive\patentmatch_train\patentmatch_train_no_claims.csv')
+    input_file = Path(r'C:\Users\orgrd\workspace\data\patentmatch_test\patentmatch_test_no_claims.csv')
     logger.info(f"Reading input file from: {input_file}")    
     file_type = input_file.suffix
     sep = "\t" if file_type == ".tsv" else ","

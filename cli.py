@@ -11,6 +11,7 @@ import tqdm
 from pydantic import BaseModel
 from typing import List, Optional
 import json
+from time import time
 
 logger = logging.getLogger(__name__)
 
@@ -109,37 +110,97 @@ def main(args):
         
         
     elif args.sub_command == "run_negation_detection_model":
-        pass
-        # logger.info(f"Reading input file from: {args.input_tsv}")
-        # file_type = Path(args.input_tsv).suffix
-        # sep = "\t" if file_type == ".tsv" else ","
-        # df = pd.read_csv(args.input_tsv, sep=sep)
+        start_time = time()
+        logger.info("Starting negation detection process...")
         
-        # from runi_thesis_project.models.negation_detection.prompts import NEGATION_PROMPT_DETAILED
-        # from openai import AsyncOpenAI
-        # api_key = os.getenv("THESIS_ALON_OPENAI_API_KEY")
-        # async_client = AsyncOpenAI(api_key=api_key)
-        
-        # # Split the df into batches of max 25,000 rows each to avoid hitting the OpenAI API limits
-        # # Use OpenAI batch completion API to run the model on each batch
-        # # Concatenate the results and write them to the output csv when done
-        # batch_size = 25000
-        # num_batches = len(df) // batch_size + 1
-        # results = []
-        # for i in range(num_batches):
-        #     start_idx = i * batch_size
-        #     end_idx = (i + 1) * batch_size
-        #     batch_df = df.iloc[start_idx:end_idx]
-        #     logger.info(f"Running batch {i + 1}/{num_batches} with {len(batch_df)} rows")
-        #     batch_results = await asyncio.gather(
-        #         *[async_client.complete_chat(NEGATION_PROMPT_DETAILED, text) for text in batch_df[args.column]]
-        #     )
-        #     results.extend(batch_results)
+        input_path = Path(r"G:\My Drive\Colab Notebooks\research_data\thesis\patentmatch\patentmatch_test\patentmatch_test_no_claims.csv")
+        logger.info(f"Checking input file at: {input_path}")
+        if not input_path.exists():
+            logger.error(f"Input file not found at: {input_path}")
+            raise FileNotFoundError(f"Input file not found: {input_path}")
             
+        logger.info(f"Reading input file from: {input_path}")
+        df = pd.read_csv(input_path)
+        logger.info(f"Successfully loaded {len(df)} rows from input file")
+        logger.info(f"Memory usage of dataframe: {df.memory_usage().sum() / 1024 / 1024:.2f} MB")
         
+        from runi_thesis_project.models.negation_detection.prompts import NEGATION_PROMPT_DETAILED
+        from openai import AsyncOpenAI
+        import asyncio
+        from tqdm.asyncio import tqdm as atqdm
+        import time
+        from datetime import datetime
         
+        api_key = os.getenv("THESIS_ALON_OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OpenAI API key not found in environment variables")
+            raise ValueError("THESIS_ALON_OPENAI_API_KEY environment variable not set")
+            
+        logger.info("Initializing OpenAI client...")
+        async_client = AsyncOpenAI(api_key=api_key)
         
+        async def process_text(text, index):
+            try:
+                start = time.time()
+                logger.debug(f"Processing text {index}: {text[:100]}...")
+                response = await async_client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": NEGATION_PROMPT_DETAILED},
+                        {"role": "user", "content": f"Analyze the following text: {text}"}
+                    ]
+                )
+                duration = time.time() - start
+                logger.debug(f"Text {index} processed in {duration:.2f}s")
+                return response.choices[0].message.content.strip()
+            except Exception as e:
+                logger.error(f"Error processing text {index}: {str(e)}")
+                logger.exception("Full traceback:")
+                return f"ERROR: {str(e)}"
+
+        async def run_model():
+            logger.info("Starting model processing with concurrency limit of 5")
+            semaphore = asyncio.Semaphore(5)
+            processed = 0
+            errors = 0
+            
+            async def process_with_semaphore(text, index):
+                nonlocal processed, errors
+                async with semaphore:
+                    result = await process_text(text, index)
+                    processed += 1
+                    if result.startswith("ERROR"):
+                        errors += 1
+                    if processed % 100 == 0:
+                        logger.info(f"Processed {processed}/{len(df)} texts. Errors: {errors}")
+                    return result
+            
+            tasks = [process_with_semaphore(text, i) for i, text in enumerate(df[args.column])]
+            logger.info(f"Created {len(tasks)} tasks for processing")
+            results = await atqdm.gather(*tasks)
+            return results
+
+        logger.info(f"Starting processing of {len(df)} rows at {datetime.now()}")
+        df["negation_detected"] = asyncio.run(run_model())
         
+        # Calculate statistics
+        error_count = sum(1 for x in df["negation_detected"] if str(x).startswith("ERROR"))
+        success_rate = ((len(df) - error_count) / len(df)) * 100
+        
+        # Save results
+        output_path = Path(args.output_tsv)
+        logger.info(f"Saving results to {output_path}")
+        logger.info(f"Processing statistics:")
+        logger.info(f"Total processed: {len(df)}")
+        logger.info(f"Successful: {len(df) - error_count}")
+        logger.info(f"Errors: {error_count}")
+        logger.info(f"Success rate: {success_rate:.2f}%")
+        
+        df.to_csv(output_path, sep=sep, index=False)
+        total_time = time.time() - start_time
+        logger.info(f"Process completed in {total_time:.2f} seconds")
+        logger.info(f"Average time per record: {total_time/len(df):.2f} seconds")
+        logger.info("Done!")
     
         
 #         logger.info(f"Read {len(df)} rows from {args.input_tsv}")
