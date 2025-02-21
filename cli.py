@@ -110,99 +110,69 @@ def main(args):
         
         
     elif args.sub_command == "run_negation_detection_model":
-        start_time = time()
-        logger.info("Starting negation detection process...")
-        
-        input_path = Path(r"G:\My Drive\Colab Notebooks\research_data\thesis\patentmatch\patentmatch_test\patentmatch_test_no_claims.csv")
-        logger.info(f"Checking input file at: {input_path}")
-        if not input_path.exists():
-            logger.error(f"Input file not found at: {input_path}")
-            raise FileNotFoundError(f"Input file not found: {input_path}")
-            
-        logger.info(f"Reading input file from: {input_path}")
-        df = pd.read_csv(input_path)
-        logger.info(f"Successfully loaded {len(df)} rows from input file")
-        logger.info(f"Memory usage of dataframe: {df.memory_usage().sum() / 1024 / 1024:.2f} MB")
-        
+        from runi_thesis_project.models.negation_detection.client import create_model
         from runi_thesis_project.models.negation_detection.prompts import NEGATION_PROMPT_DETAILED
-        from openai import AsyncOpenAI
         import asyncio
-        from tqdm.asyncio import tqdm as atqdm
-        import time
-        from datetime import datetime
         
         api_key = os.getenv("THESIS_ALON_OPENAI_API_KEY")
         if not api_key:
-            logger.error("OpenAI API key not found in environment variables")
             raise ValueError("THESIS_ALON_OPENAI_API_KEY environment variable not set")
-            
-        logger.info("Initializing OpenAI client...")
-        async_client = AsyncOpenAI(api_key=api_key)
+
+        # Create the client
+        client = create_model(
+            provider_type="openai",
+            api_key=api_key,
+            model=args.model,
+            batch_size=args.batch_size,
+            max_concurrent_requests=args.max_concurrent
+        )
+
+        # Determine which stages to run
+        stages = args.stages.lower().split(',') if args.stages != 'all' else ['prepare_jsonl', 'process_api', 'save_results']
         
-        async def process_text(text, index):
-            try:
-                start = time.time()
-                logger.debug(f"Processing text {index}: {text[:100]}...")
-                response = await async_client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": NEGATION_PROMPT_DETAILED},
-                        {"role": "user", "content": f"Analyze the following text: {text}"}
-                    ]
+        async def run_pipeline():
+            # Initialize paths
+            input_path = Path(r"G:\My Drive\Colab Notebooks\research_data\thesis\patentmatch\patentmatch_test\patentmatch_test_no_claims.csv")
+            output_dir = Path(args.output_dir) if args.output_dir else input_path.parent / "negation_detection_output"
+            output_dir.mkdir(exist_ok=True)
+            
+            # Load input data
+            logger.info(f"Loading input file: {input_path}")
+            df = pd.read_csv(input_path)
+            
+            # Stage 1: Prepare JSONL files
+            if 'prepare_jsonl' in stages:
+                logger.info("Stage 1: Preparing JSONL files")
+                batch_files = await client.prepare_batches(
+                    df=df,
+                    text_column=args.column,
+                    output_dir=output_dir / "jsonl_batches",
+                    prompt_template=NEGATION_PROMPT_DETAILED
                 )
-                duration = time.time() - start
-                logger.debug(f"Text {index} processed in {duration:.2f}s")
-                return response.choices[0].message.content.strip()
-            except Exception as e:
-                logger.error(f"Error processing text {index}: {str(e)}")
-                logger.exception("Full traceback:")
-                return f"ERROR: {str(e)}"
-
-        async def run_model():
-            logger.info("Starting model processing with concurrency limit of 5")
-            semaphore = asyncio.Semaphore(5)
-            processed = 0
-            errors = 0
+                logger.info(f"Created {len(batch_files)} batch files")
             
-            async def process_with_semaphore(text, index):
-                nonlocal processed, errors
-                async with semaphore:
-                    result = await process_text(text, index)
-                    processed += 1
-                    if result.startswith("ERROR"):
-                        errors += 1
-                    if processed % 100 == 0:
-                        logger.info(f"Processed {processed}/{len(df)} texts. Errors: {errors}")
-                    return result
+            # Stage 2: Process through API
+            if 'process_api' in stages:
+                logger.info("Stage 2: Processing through API")
+                df = await client.process_dataframe(
+                    df=df,
+                    text_column=args.column,
+                    prompt_template=NEGATION_PROMPT_DETAILED
+                )
             
-            tasks = [process_with_semaphore(text, i) for i, text in enumerate(df[args.column])]
-            logger.info(f"Created {len(tasks)} tasks for processing")
-            results = await atqdm.gather(*tasks)
-            return results
+            # Stage 3: Save results
+            if 'save_results' in stages:
+                logger.info("Stage 3: Saving results")
+                output_file = output_dir / "negation_results.csv"
+                df.to_csv(output_file, index=False)
+                logger.info(f"Results saved to {output_file}")
+            
+            return df
 
-        logger.info(f"Starting processing of {len(df)} rows at {datetime.now()}")
-        df["negation_detected"] = asyncio.run(run_model())
-        
-        # Calculate statistics
-        error_count = sum(1 for x in df["negation_detected"] if str(x).startswith("ERROR"))
-        success_rate = ((len(df) - error_count) / len(df)) * 100
-        
-        # Save results
-        output_path = Path(args.output_tsv)
-        logger.info(f"Saving results to {output_path}")
-        logger.info(f"Processing statistics:")
-        logger.info(f"Total processed: {len(df)}")
-        logger.info(f"Successful: {len(df) - error_count}")
-        logger.info(f"Errors: {error_count}")
-        logger.info(f"Success rate: {success_rate:.2f}%")
-        
-        df.to_csv(output_path, sep=sep, index=False)
-        total_time = time.time() - start_time
-        logger.info(f"Process completed in {total_time:.2f} seconds")
-        logger.info(f"Average time per record: {total_time/len(df):.2f} seconds")
-        logger.info("Done!")
-    
-        
+        # Run the pipeline
+        df = asyncio.run(run_pipeline())
+        logger.info("Pipeline completed successfully")
+
 #         logger.info(f"Read {len(df)} rows from {args.input_tsv}")
 
 #         # Run the negation detection model
@@ -363,6 +333,38 @@ if __name__ == "__main__":
         "--column",
         help="Column to prepare for OpenAI API",
         required=True,
+        type=str
+    )
+
+    # Add new stage control for negation detection
+    run_negation_detection_model_p.add_argument(
+        "--stages",
+        help="Stages to run (prepare_jsonl,process_api,save_results)",
+        default="all",
+        type=str
+    )
+    run_negation_detection_model_p.add_argument(
+        "--model",
+        help="Model to use for negation detection",
+        default="gpt-4",
+        type=str
+    )
+    run_negation_detection_model_p.add_argument(
+        "--batch_size",
+        help="Batch size for processing",
+        default=5000,
+        type=int
+    )
+    run_negation_detection_model_p.add_argument(
+        "--max_concurrent",
+        help="Maximum concurrent API requests",
+        default=5,
+        type=int
+    )
+    run_negation_detection_model_p.add_argument(
+        "--output_dir",
+        help="Directory for intermediate JSONL files",
+        default=None,
         type=str
     )
 
