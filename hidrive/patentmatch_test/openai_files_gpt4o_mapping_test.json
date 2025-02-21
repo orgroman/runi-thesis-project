@@ -1,0 +1,10 @@
+{
+  "text_b": {
+    "C:\\path\\to\\test_file1.jsonl": "file-xyz",
+    "C:\\path\\to\\test_file2.jsonl": "file-abc"
+  },
+  "text": {
+    "C:\\path\\to\\test_file3.jsonl": "file-123",
+    "C:\\path\\to\\test_file4.jsonl": "file-456"
+  }
+}

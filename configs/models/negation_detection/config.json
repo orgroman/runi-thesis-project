@@ -1,0 +1,6 @@
+{
+    "endpoint_url": "http://localhost:8080/v1/chat/completions",
+    "model_name": "LLaMA_CPP",
+    "system_prompt_name": "negation_detection",
+    "provider_type": "llamafile"
+}

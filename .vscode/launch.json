@@ -1,0 +1,66 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env"
+        },
+        {
+            "name": "cli - remove dependent",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/cli.py",
+            "console": "integratedTerminal",
+            "env": {
+                "CONFIG_DIR": "${workspaceFolder}/configs",
+            },
+            "args": [
+                // "train_model",
+                // "--train_input", "train.tsv",
+                "run_negation_detection_model",
+                "--input_tsv",
+                "C:\\workspace_or_private\\repos\\runi-thesis-project\\hidrive\\patentmatch_test\\patentmatch_test.tsv",
+                "--column",
+                "text_b",
+            ]
+        },
+        {
+            "name": "cli - create jsonl",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/cli.py",
+            "console": "integratedTerminal",
+            "env": {
+                "CONFIG_DIR": "${workspaceFolder}/configs",
+            },
+            "args": [
+                // "train_model",
+                // "--train_input", "train.tsv",
+                "prepare_jsonl_column",
+                "--input_tsv",
+                "C:\\workspace_or_private\\repos\\runi-thesis-project\\hidrive\\patentmatch_test\\patentmatch_test_no_claims.csv",
+                "--column",
+                "text",
+            ]
+        },
+        {
+            "name": "Debug - file",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}"
+        },
+        {
+            "name": "debug aiopika df",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/runi_thesis_project/clients/aiopika_df.py"
+        }
+    ]
+}
