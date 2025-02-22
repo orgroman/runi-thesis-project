@@ -21,6 +21,12 @@ services:
     command: redis-server --save 20 1 --loglevel warning --requirepass eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
     volumes: 
       - cache:/data
+  cache-ui:
+    image: patrikx3/p3x-redis-ui:latest
+    ports:
+      - "7843:7843"
+    volumes:
+      - /home/user/p3x-redis-ui-settings:/settings      
 volumes:
   cache:
     driver: local      
