@@ -14,6 +14,34 @@ services:
     labels:
       NAME: "rabbitmq"
 
+  mongo:
+    image: mongo
+    environment:
+        - MONGO_INITDB_ROOT_USERNAME=user
+        - MONGO_INITDB_ROOT_PASSWORD=pass
+        - MONGO_INITDB_DATABASE=negationdb
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongodbdata:/data/db
+
+
+  mongo-express:
+      image: mongo-express
+      environment:
+          - ME_CONFIG_MONGODB_SERVER=mongo
+          - ME_CONFIG_MONGODB_PORT=27017
+          - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
+          - ME_CONFIG_MONGODB_AUTH_DATABASE=admin
+          - ME_CONFIG_MONGODB_AUTH_USERNAME=user
+          - ME_CONFIG_MONGODB_AUTH_PASSWORD=pass
+          - ME_CONFIG_BASICAUTH_USERNAME=user
+          - ME_CONFIG_BASICAUTH_PASSWORD=pass
+      depends_on:
+          - mongo
+      ports:
+        - "8088:8081"
+
   
   redis:
     image: redis:6.2-alpine
@@ -30,5 +58,6 @@ services:
     volumes:
       - /home/user/p3x-redis-ui-settings:/settings      
 volumes:
+  mongodbdata:
   cache:
     driver: local      
