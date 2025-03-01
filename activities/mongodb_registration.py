@@ -65,9 +65,23 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
         # If not registered, get JSONL content size
         content_size = len(jsonl_batch["content"])
         
+        # Create base file name
+        base_file_name = f"batch_{jsonl_batch['batch_number']}.jsonl"
+        
+        # Check if a file with this name already exists
+        existing_file = files_collection.find_one({"file_name": base_file_name})
+        
+        if existing_file:
+            # If file exists but is not associated with this batch, create a unique name
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            file_name = f"batch_{jsonl_batch['batch_number']}_{timestamp}.jsonl"
+            activity.logger.info(f"File name {base_file_name} already exists, using {file_name} instead")
+        else:
+            file_name = base_file_name
+        
         # Create file metadata
         file_metadata = FileMetadata(
-            file_name=f"batch_{jsonl_batch['batch_number']}.jsonl",
+            file_name=file_name,
             file_size=content_size,
             created_at=datetime.now(),
             status="ready",

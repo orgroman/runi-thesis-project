@@ -58,11 +58,25 @@ class FileMetadata(BaseModel):
 
     @model_serializer
     def ser_model(self) -> Dict[str, Any]:
-        # Convert all datetime objects to ISO format strings
-        data = self.model_dump()
-        for field in ['created_at', 'uploaded_at']:
-            if field in data and isinstance(data[field], datetime):
-                data[field] = data[field].isoformat()
+        # Manually build dictionary to avoid recursion with model_dump()
+        data = {
+            "file_name": self.file_name,
+            "file_size": self.file_size,
+            "status": self.status,
+            "attempts": self.attempts
+        }
+        
+        # Handle datetime fields
+        if hasattr(self, 'created_at') and self.created_at is not None:
+            data["created_at"] = self.created_at.isoformat()
+        if hasattr(self, 'uploaded_at') and self.uploaded_at is not None:
+            data["uploaded_at"] = self.uploaded_at.isoformat()
+            
+        # Add optional fields if present
+        for field in ["file_path", "openai_file_id", "batch_id", "mongodb_id", "jsonl_batch_id"]:
+            if getattr(self, field, None) is not None:
+                data[field] = getattr(self, field)
+            
         return data
 
 class BatchRequest(BaseModel):
@@ -81,10 +95,24 @@ class BatchRequest(BaseModel):
 
     @model_serializer
     def ser_model(self) -> Dict[str, Any]:
-        data = self.model_dump()
-        for field in ['created_at', 'last_checked']:
-            if field in data and isinstance(data[field], datetime):
-                data[field] = data[field].isoformat()
+        # Manually build dictionary to avoid recursion
+        data = {
+            "file_id": self.file_id,
+            "openai_file_id": self.openai_file_id,
+            "batch_id": self.batch_id,
+            "status": self.status
+        }
+        
+        # Handle datetime fields
+        for dt_field in ['created_at', 'expires_at', 'last_checked']:
+            if hasattr(self, dt_field) and getattr(self, dt_field) is not None:
+                data[dt_field] = getattr(self, dt_field).isoformat()
+        
+        # Add optional fields
+        for opt_field in ["jsonl_batch_id", "output_file_id", "error", "mongodb_id"]:
+            if hasattr(self, opt_field) and getattr(self, opt_field) is not None:
+                data[opt_field] = getattr(self, opt_field)
+                
         return data
 
 class ProcessingResult(BaseModel):
@@ -109,7 +137,16 @@ class BatchError(BaseModel):
 
     @model_serializer
     def ser_model(self) -> Dict[str, Any]:
-        data = self.model_dump()
-        if 'timestamp' in data and isinstance(data['timestamp'], datetime):
-            data['timestamp'] = data['timestamp'].isoformat()
+        # Manually build dictionary to avoid recursion
+        data = {
+            "batch_id": self.batch_id,
+            "file_id": self.file_id,
+            "error_type": self.error_type,
+            "error_message": self.error_message
+        }
+        
+        # Handle timestamp
+        if hasattr(self, 'timestamp') and self.timestamp is not None:
+            data["timestamp"] = self.timestamp.isoformat()
+            
         return data

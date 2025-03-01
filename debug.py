@@ -1,10 +1,9 @@
 import asyncio
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 
 from temporalio.client import Client
-from temporalio.common import RetryPolicy
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,49 +16,52 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+WORKFLOW_ID = "patent-negation-analysis"
+
 async def check_workflow_status():
-    """Check the status of the running workflow."""
+    """Check the status of a workflow execution and print details."""
+    client = await Client.connect("localhost:7233")
+    
+    # Get the handle for the workflow
+    handle = client.get_workflow_handle(WORKFLOW_ID)
+    
     try:
-        # Connect to Temporal server
-        client = await Client.connect("localhost:7233")
-        logger.info(f"Connected to Temporal server")
-        
-        # Try to get the workflow handle
-        handle = client.get_workflow_handle("patent-negation-analysis")
-        
-        # Get workflow description
+        # Get workflow description which includes the status and other metadata
         desc = await handle.describe()
         
-        logger.info(f"Workflow ID: {desc.id}")
-        logger.info(f"Run ID: {desc.run_id}")
+        # Use the correct attribute names for WorkflowExecutionDescription
+        # The id is available on the handle, not on the description
+        logger.info(f"Workflow ID: {handle.id}")
+        
+        # Access run_id from the description
+        logger.info(f"Run ID: {desc.id.run_id if hasattr(desc, 'id') else 'Unknown'}")
+        
+        # Log the status
         logger.info(f"Status: {desc.status}")
+        
+        # Log start time
         logger.info(f"Started: {desc.start_time}")
         
-        # Ensure both datetimes are timezone-aware for proper comparison
-        now = datetime.now(timezone.utc)
-        if desc.start_time.tzinfo is None:
-            start_time = desc.start_time.replace(tzinfo=timezone.utc)
-        else:
-            start_time = desc.start_time
+        # Calculate execution time
+        if desc.start_time:
+            execution_time = datetime.now().astimezone() - desc.start_time
+            logger.info(f"Execution time: {execution_time}")
             
-        logger.info(f"Execution time: {now - start_time}")
-        
-        # Fix the history retrieval
-        response = await client.get_workflow_history(desc.id, run_id=desc.run_id)
-        
-        logger.info(f"History events: {len(response)}")
-        
-        # Analyze last few events
-        last_events = response[-10:] if len(response) >= 10 else response
-        logger.info("Last events:")
-        for event in last_events:
-            logger.info(f"  {event.event_type}")
-        
-        return True
-        
+        # Check if workflow has failed - access status in a safer way
+        if hasattr(desc.status, 'name') and desc.status.name == "FAILED":
+            try:
+                # Get workflow execution history
+                history = await handle.fetch_history()
+                
+                # Access and print history information if available
+                logger.info(f"History events: {len(history.events) if history and hasattr(history, 'events') else 'No events'}")
+            except Exception as hist_error:
+                logger.error(f"Error fetching history: {str(hist_error)}")
+    
     except Exception as e:
         logger.error(f"Error checking workflow status: {str(e)}")
-        return False
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
 
 async def run_worker_debug():
     """Run a simplified worker for debugging purposes."""
@@ -83,18 +85,22 @@ async def run_worker_debug():
     await worker.run()
 
 async def main():
+    """Main function to process commands."""
     if len(sys.argv) < 2:
-        print("Usage: python debug.py [check|worker]")
+        print("Usage: python debug.py [check|terminate]")
         return
-    
-    command = sys.argv[1]
+        
+    command = sys.argv[1].lower()
     
     if command == "check":
         await check_workflow_status()
-    elif command == "worker":
-        await run_worker_debug()
+    elif command == "terminate":
+        client = await Client.connect("localhost:7233")
+        handle = client.get_workflow_handle(WORKFLOW_ID)
+        await handle.terminate("Manually terminated")
+        logger.info(f"Workflow {WORKFLOW_ID} terminated.")
     else:
-        print(f"Unknown command: {command}")
+        logger.error(f"Unknown command: {command}")
 
 if __name__ == "__main__":
     asyncio.run(main())
