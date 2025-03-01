@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
     """
     Register a JSONL batch from MongoDB as a file for OpenAI processing.
+    If already registered, return the existing file metadata.
     
     Args:
         jsonl_batch_id: MongoDB ID of the JSONL batch
@@ -31,13 +32,37 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
         client = get_mongo_client()
         db = client.patent_negation
         jsonl_collection = db.jsonl_batches
+        files_collection = db.files
         
         # Convert string ID to ObjectId
-        jsonl_batch = jsonl_collection.find_one({"_id": ObjectId(jsonl_batch_id)})
+        batch_obj_id = ObjectId(jsonl_batch_id)
+        jsonl_batch = jsonl_collection.find_one({"_id": batch_obj_id})
+        
         if not jsonl_batch:
             raise KeyError(f"JSONL batch with ID {jsonl_batch_id} not found in MongoDB")
         
-        # Get JSONL content size
+        # Check if batch is already registered with a file
+        if jsonl_batch.get("file_id") and jsonl_batch.get("status") == "registered":
+            activity.logger.info(f"JSONL batch {jsonl_batch_id} is already registered with file ID {jsonl_batch['file_id']}")
+            
+            # Retrieve the existing file metadata
+            file = files_collection.find_one({"_id": ObjectId(jsonl_batch["file_id"])})
+            
+            if file:
+                file_metadata = FileMetadata(
+                    file_name=file["file_name"],
+                    file_size=file["file_size"],
+                    created_at=file.get("created_at", datetime.now()),
+                    status=file["status"],
+                    attempts=file.get("attempts", 0),
+                    jsonl_batch_id=jsonl_batch_id,
+                    mongodb_id=str(file["_id"]),
+                    openai_file_id=file.get("openai_file_id"),
+                    uploaded_at=file.get("uploaded_at")
+                )
+                return file_metadata
+        
+        # If not registered, get JSONL content size
         content_size = len(jsonl_batch["content"])
         
         # Create file metadata
@@ -51,7 +76,6 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
         )
         
         # Insert file metadata into MongoDB
-        files_collection = db.files
         result = files_collection.insert_one(file_metadata.model_dump(exclude={"mongodb_id"}))
         file_metadata.mongodb_id = str(result.inserted_id)
         

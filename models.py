@@ -14,10 +14,23 @@ class JsonlBatch(BaseModel):
 
     @model_serializer
     def ser_model(self) -> Dict[str, Any]:
-        # Convert all datetime objects to ISO format strings
-        data = self.model_dump()
-        if 'created_at' in data and isinstance(data['created_at'], datetime):
-            data['created_at'] = data['created_at'].isoformat()
+        # Manually build dictionary to avoid recursion with model_dump()
+        data = {
+            "batch_number": self.batch_number,
+            "content": self.content,
+            "record_count": self.record_count,
+            "status": self.status,
+            "source_dataframe": self.source_dataframe
+        }
+        
+        # Handle datetime separately
+        if hasattr(self, 'created_at') and self.created_at is not None:
+            data["created_at"] = self.created_at.isoformat()
+            
+        # Add optional fields if present
+        if self.mongodb_id is not None:
+            data["mongodb_id"] = self.mongodb_id
+            
         return data
 
 class NegationResponse(BaseModel):

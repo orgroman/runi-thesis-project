@@ -18,13 +18,14 @@ logger = logging.getLogger(__name__)
 async def prepare_jsonl_files(dataframe_pickle_path: str, batch_size: int = 1000) -> List[str]:
     """
     Prepare JSONL batches and save them to MongoDB.
+    If batches from the same source dataframe already exist, reuse them.
     
     Args:
         dataframe_pickle_path: Path to pickled DataFrame
         batch_size: Number of records per batch
         
     Returns:
-        List of MongoDB IDs for the created JSONL batches
+        List of MongoDB IDs for the JSONL batches
         
     Raises:
         FileNotFoundError: If the pickle file does not exist
@@ -37,14 +38,32 @@ async def prepare_jsonl_files(dataframe_pickle_path: str, batch_size: int = 1000
         raise FileNotFoundError(f"Pickle file not found: {dataframe_pickle_path}")
     
     try:
-        # Load DataFrame from pickle
-        with open(dataframe_pickle_path, 'rb') as f:
-            df = pickle.load(f)
-        
         # Get MongoDB client
         mongo_client = get_mongo_client()
         db = mongo_client.patent_negation
         jsonl_collection = db.jsonl_batches
+        
+        # Check if batches for this dataframe already exist
+        existing_batches = list(jsonl_collection.find({
+            "source_dataframe": dataframe_pickle_path,
+            "status": {"$in": ["created", "registered"]}  # Only consider valid batches
+        }).sort("batch_number", 1))
+        
+        if existing_batches:
+            activity.logger.info(f"Found {len(existing_batches)} existing JSONL batches for {dataframe_pickle_path}")
+            batch_ids = [str(batch["_id"]) for batch in existing_batches]
+            return batch_ids
+        
+        # Load DataFrame from pickle if we need to create new batches
+        activity.logger.info(f"No existing batches found. Creating new JSONL batches for {dataframe_pickle_path}")
+        with open(dataframe_pickle_path, 'rb') as f:
+            df = pickle.load(f)
+        
+        # Find highest existing batch number to avoid conflicts
+        highest_batch = jsonl_collection.find_one(
+            sort=[("batch_number", -1)]
+        )
+        batch_number_start = (highest_batch["batch_number"] + 1) if highest_batch else 0
         
         # Process in batches
         num_batches = len(df) // batch_size + (1 if len(df) % batch_size > 0 else 0)
@@ -63,9 +82,9 @@ async def prepare_jsonl_files(dataframe_pickle_path: str, batch_size: int = 1000
                 jsonl_line = create_jsonl_line(row)
                 jsonl_content.write(json.dumps(jsonl_line, ensure_ascii=False) + "\n")
             
-            # Create batch object
+            # Create batch object with incrementing batch number
             jsonl_batch = JsonlBatch(
-                batch_number=i,
+                batch_number=batch_number_start + i,
                 content=jsonl_content.getvalue(),
                 record_count=len(batch_df),
                 created_at=datetime.now(),
