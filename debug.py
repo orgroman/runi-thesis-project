@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from temporalio.client import Client
 from temporalio.common import RetryPolicy
@@ -34,18 +34,23 @@ async def check_workflow_status():
         logger.info(f"Run ID: {desc.run_id}")
         logger.info(f"Status: {desc.status}")
         logger.info(f"Started: {desc.start_time}")
-        logger.info(f"Execution time: {datetime.now() - desc.start_time}")
         
-        # Check for pending activities
-        response = await client.workflow_service.get_workflow_execution_history(
-            workflow_id=desc.id,
-            run_id=desc.run_id
-        )
+        # Ensure both datetimes are timezone-aware for proper comparison
+        now = datetime.now(timezone.utc)
+        if desc.start_time.tzinfo is None:
+            start_time = desc.start_time.replace(tzinfo=timezone.utc)
+        else:
+            start_time = desc.start_time
+            
+        logger.info(f"Execution time: {now - start_time}")
         
-        logger.info(f"History events: {len(response.history.events)}")
+        # Fix the history retrieval
+        response = await client.get_workflow_history(desc.id, run_id=desc.run_id)
+        
+        logger.info(f"History events: {len(response)}")
         
         # Analyze last few events
-        last_events = response.history.events[-10:] if len(response.history.events) >= 10 else response.history.events
+        last_events = response[-10:] if len(response) >= 10 else response
         logger.info("Last events:")
         for event in last_events:
             logger.info(f"  {event.event_type}")

@@ -1,6 +1,8 @@
 import logging
+import tempfile
 from datetime import datetime
 from pathlib import Path
+from bson import ObjectId
 
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -19,32 +21,42 @@ logger = logging.getLogger(__name__)
 )
 async def upload_file_to_openai(file_metadata: FileMetadata, api_key: str) -> FileMetadata:
     """
-    Upload a JSONL file to OpenAI for batch processing.
+    Upload a JSONL batch from MongoDB to OpenAI.
     
     Args:
-        file_metadata: FileMetadata object with file info
+        file_metadata: FileMetadata object with MongoDB references
         api_key: OpenAI API key
         
     Returns:
         Updated FileMetadata with OpenAI file ID
         
     Raises:
-        FileNotFoundError: If the file does not exist
+        KeyError: If the JSONL batch does not exist
         Exception: For OpenAI API errors
     """
     activity.logger.info(f"Uploading file {file_metadata.file_name} to OpenAI")
     
-    # Check if file exists
-    file_path = Path(file_metadata.file_path)
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_metadata.file_path}")
-    
     try:
+        # Get MongoDB client and retrieve the JSONL content
+        mongo_client = get_mongo_client()
+        db = mongo_client.patent_negation
+        jsonl_collection = db.jsonl_batches
+        
+        # Convert string ID to ObjectId for MongoDB query
+        jsonl_batch = jsonl_collection.find_one({"_id": ObjectId(file_metadata.jsonl_batch_id)})
+        if not jsonl_batch:
+            raise KeyError(f"JSONL batch not found with ID: {file_metadata.jsonl_batch_id}")
+        
+        # Create a temporary file to hold the JSONL content
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as temp_file:
+            temp_file.write(jsonl_batch["content"])
+            temp_file_path = temp_file.name
+        
         # Initialize OpenAI client
         client = OpenAI(api_key=api_key)
         
         # Upload file to OpenAI
-        with open(file_path, 'rb') as file:
+        with open(temp_file_path, 'rb') as file:
             response = client.files.create(
                 file=file,
                 purpose='batch'
@@ -56,12 +68,9 @@ async def upload_file_to_openai(file_metadata: FileMetadata, api_key: str) -> Fi
         file_metadata.uploaded_at = datetime.now()
         
         # Update in MongoDB
-        mongo_client = get_mongo_client()
-        db = mongo_client.patent_negation
         files_collection = db.files
-        
         files_collection.update_one(
-            {"_id": file_metadata.mongodb_id},
+            {"_id": ObjectId(file_metadata.mongodb_id)},
             {"$set": {
                 "openai_file_id": file_metadata.openai_file_id,
                 "status": "uploaded",
@@ -81,7 +90,7 @@ async def upload_file_to_openai(file_metadata: FileMetadata, api_key: str) -> Fi
                 files_collection = db.files
                 
                 files_collection.update_one(
-                    {"_id": file_metadata.mongodb_id},
+                    {"_id": ObjectId(file_metadata.mongodb_id)},
                     {"$set": {
                         "status": "upload_failed",
                         "error": str(e),

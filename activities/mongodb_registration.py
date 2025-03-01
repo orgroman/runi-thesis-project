@@ -1,8 +1,6 @@
 import logging
-import os
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
+from bson import ObjectId
 
 from temporalio import activity
 
@@ -12,53 +10,60 @@ from mongodb import get_mongo_client
 logger = logging.getLogger(__name__)
 
 @activity.defn
-async def register_file_in_mongodb(file_path: str) -> FileMetadata:
+async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
     """
-    Register a JSONL file in MongoDB for tracking.
+    Register a JSONL batch from MongoDB as a file for OpenAI processing.
     
     Args:
-        file_path: Path to the JSONL file
+        jsonl_batch_id: MongoDB ID of the JSONL batch
         
     Returns:
         FileMetadata object with MongoDB document ID
         
     Raises:
-        FileNotFoundError: If the file does not exist
+        KeyError: If the JSONL batch does not exist
         Exception: For MongoDB connection or insertion errors
     """
-    activity.logger.info(f"Registering file {file_path} in MongoDB")
-    
-    # Check if file exists
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+    activity.logger.info(f"Registering JSONL batch {jsonl_batch_id} in MongoDB")
     
     try:
-        # Get file stats
-        file_size = path.stat().st_size
-        file_name = path.name
+        # Get MongoDB client and retrieve the JSONL batch
+        client = get_mongo_client()
+        db = client.patent_negation
+        jsonl_collection = db.jsonl_batches
+        
+        # Convert string ID to ObjectId
+        jsonl_batch = jsonl_collection.find_one({"_id": ObjectId(jsonl_batch_id)})
+        if not jsonl_batch:
+            raise KeyError(f"JSONL batch with ID {jsonl_batch_id} not found in MongoDB")
+        
+        # Get JSONL content size
+        content_size = len(jsonl_batch["content"])
         
         # Create file metadata
         file_metadata = FileMetadata(
-            file_path=file_path,
-            file_name=file_name,
-            file_size=file_size,
+            file_name=f"batch_{jsonl_batch['batch_number']}.jsonl",
+            file_size=content_size,
             created_at=datetime.now(),
             status="ready",
             attempts=0,
+            jsonl_batch_id=str(jsonl_batch["_id"])
         )
         
-        # Get MongoDB client and insert document
-        client = get_mongo_client()
-        db = client.patent_negation
+        # Insert file metadata into MongoDB
         files_collection = db.files
-        
-        result = files_collection.insert_one(file_metadata.model_dump())
+        result = files_collection.insert_one(file_metadata.model_dump(exclude={"mongodb_id"}))
         file_metadata.mongodb_id = str(result.inserted_id)
         
-        activity.logger.info(f"File registered in MongoDB with ID: {file_metadata.mongodb_id}")
+        # Update JSONL batch with file reference
+        jsonl_collection.update_one(
+            {"_id": jsonl_batch["_id"]},
+            {"$set": {"status": "registered", "file_id": file_metadata.mongodb_id}}
+        )
+        
+        activity.logger.info(f"JSONL batch registered as file with ID: {file_metadata.mongodb_id}")
         return file_metadata
         
     except Exception as e:
-        activity.logger.error(f"Error registering file in MongoDB: {str(e)}")
+        activity.logger.error(f"Error registering JSONL batch in MongoDB: {str(e)}")
         raise

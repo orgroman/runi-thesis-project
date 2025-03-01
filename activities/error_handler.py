@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from bson import ObjectId
 
 from openai import OpenAI
 from temporalio import activity
@@ -52,7 +53,7 @@ async def handle_batch_error(batch_request: BatchRequest, api_key: str) -> Batch
         # Update batch status
         batch_collection = db.batch_requests
         batch_collection.update_one(
-            {"_id": batch_request.mongodb_id},
+            {"_id": ObjectId(batch_request.mongodb_id)},
             {"$set": {"status": "failed", "error": error_message}}
         )
         
@@ -69,7 +70,7 @@ async def handle_batch_error(batch_request: BatchRequest, api_key: str) -> Batch
             # Reset file status to allow resubmission
             files_collection = db.files
             files_collection.update_one(
-                {"_id": batch_request.file_id},
+                {"_id": ObjectId(batch_request.file_id)},
                 {"$set": {"status": "uploaded", "batch_id": None}}
             )
         

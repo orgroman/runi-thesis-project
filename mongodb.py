@@ -2,6 +2,7 @@ import os
 import logging
 from typing import Optional
 from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure
 from pymongo.database import Database
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ def get_mongo_client() -> MongoClient:
             # Test connection
             _mongo_client.admin.command('ping')
             logger.info(f"Successfully connected to MongoDB at {MONGO_URI}")
-        except Exception as e:
+        except ConnectionFailure as e:  # Added 'as e' to capture the exception
             logger.error(f"Failed to connect to MongoDB: {str(e)}")
             raise
             
@@ -54,28 +55,37 @@ def setup_collections():
     db = get_database()
     
     # Files collection
-    files_collection = db.files
-    files_collection.create_index("file_name", unique=True)
-    files_collection.create_index("status")
-    files_collection.create_index("openai_file_id", sparse=True)
+    if "files" not in db.list_collection_names():
+        db.create_collection("files")
+        db.files.create_index("openai_file_id")
+        db.files.create_index("status")
+        db.files.create_index("jsonl_batch_id")
     
     # Batch requests collection
-    batch_collection = db.batch_requests
-    batch_collection.create_index("batch_id", unique=True)
-    batch_collection.create_index("file_id")
-    batch_collection.create_index("status")
+    if "batch_requests" not in db.list_collection_names():
+        db.create_collection("batch_requests")
+        db.batch_requests.create_index("batch_id")
+        db.batch_requests.create_index("file_id")
+        db.batch_requests.create_index("status")
+        db.batch_requests.create_index("jsonl_batch_id")
     
     # Results collection
-    results_collection = db.negation_results
-    results_collection.create_index("batch_id")
-    results_collection.create_index("custom_id")
+    if "negation_results" not in db.list_collection_names():
+        db.create_collection("negation_results")
+        db.negation_results.create_index("custom_id")
+        db.negation_results.create_index("batch_id")
+        db.negation_results.create_index("negation_present")
     
     # Raw results collection
-    raw_results_collection = db.batch_results_raw
-    raw_results_collection.create_index("batch_id")
+    if "jsonl_batches" not in db.list_collection_names():
+        db.create_collection("jsonl_batches")
+        db.jsonl_batches.create_index("batch_number")
+        db.jsonl_batches.create_index("status")
+        db.jsonl_batches.create_index("source_dataframe")
     
-    # Processing errors collection
-    errors_collection = db.processing_errors
-    errors_collection.create_index("batch_id")
+    # Failed batches collection
+    if "failed_batches" not in db.list_collection_names():
+        db.create_collection("failed_batches")
+        db.failed_batches.create_index("batch_id")
     
     logger.info("MongoDB collections and indexes set up successfully")

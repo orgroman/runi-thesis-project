@@ -43,14 +43,141 @@ class PatentNegationAnalysisWorkflow:
                 retry_policy=standard_retry
             )
             workflow.logger.info("Successfully authenticated with Azure Key Vault")
-            
-            # Start with initial steps only to verify everything is working
-            return {
-                "status": "workflow_started",
-                "message": "Authentication successful",
-                "api_key": "[REDACTED]" # Never log the actual key
-            }
-            
         except Exception as e:
             workflow.logger.error(f"Authentication failed: {str(e)}")
-            raise ApplicationError("Authentication failed", details={"error": str(e)})
+            raise ApplicationError(f"Authentication failed: {str(e)}")
+
+        # 2. Load and validate patent CSV data
+        try:
+            df_info = await workflow.execute_activity(
+                activities.load_patent_data,
+                csv_path,
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=standard_retry
+            )
+            workflow.logger.info(f"Loaded {df_info['row_count']} records from CSV")
+        except Exception as e:
+            workflow.logger.error(f"Failed to load CSV data: {str(e)}")
+            raise ApplicationError(f"CSV loading failed: {str(e)}")
+
+        # 3. Prepare JSONL files for OpenAI batch processing
+        try:
+            jsonl_batch_ids = await workflow.execute_activity(
+                activities.prepare_jsonl_files,
+                args=[df_info['dataframe_pickle'], batch_size],  # Pass args as a list
+                start_to_close_timeout=timedelta(minutes=30),
+                retry_policy=standard_retry
+            )
+            workflow.logger.info(f"Created {len(jsonl_batch_ids)} JSONL batches in MongoDB")
+        except Exception as e:
+            workflow.logger.error(f"Failed to prepare JSONL batches: {str(e)}")
+            raise ApplicationError(f"JSONL preparation failed: {str(e)}")
+            
+        # 4. Register batches in MongoDB and upload to OpenAI
+        file_metadatas = []
+        batch_requests = []
+        
+        # Process each JSONL batch (limiting to first 5 for testing)
+        for i, jsonl_batch_id in enumerate(jsonl_batch_ids[:5]):
+            try:
+                # Register batch in MongoDB
+                file_metadata = await workflow.execute_activity(
+                    activities.register_file_in_mongodb,
+                    args=[jsonl_batch_id],
+                    start_to_close_timeout=timedelta(minutes=2),
+                    retry_policy=standard_retry
+                )
+                workflow.logger.info(f"Registered batch {i+1}/{len(jsonl_batch_ids)} in MongoDB")
+                
+                # Upload file to OpenAI
+                file_metadata = await workflow.execute_activity(
+                    activities.upload_file_to_openai,
+                    args=[file_metadata, api_key],
+                    start_to_close_timeout=timedelta(minutes=5),
+                    retry_policy=standard_retry
+                )
+                workflow.logger.info(f"Uploaded file {i+1}/{len(jsonl_batch_ids)} to OpenAI with ID: {file_metadata.openai_file_id}")
+                
+                file_metadatas.append(file_metadata)
+                
+                # Submit batch request to OpenAI
+                batch_request = await workflow.execute_activity(
+                    activities.submit_batch_request,
+                    args=[file_metadata, api_key],
+                    start_to_close_timeout=timedelta(minutes=5),
+                    retry_policy=standard_retry
+                )
+                workflow.logger.info(f"Submitted batch request {i+1}/{len(jsonl_batch_ids)} with ID: {batch_request.batch_id}")
+                
+                batch_requests.append(batch_request)
+                
+            except Exception as e:
+                workflow.logger.error(f"Failed to process file {jsonl_batch_id}: {str(e)}")
+                # Continue with other files instead of failing the entire workflow
+                continue
+                
+        if not batch_requests:
+            workflow.logger.error("No batch requests were submitted successfully")
+            raise ApplicationError("Failed to submit any batch requests")
+        
+        # 5. Wait for at least one batch to complete
+        try:
+            completed_batch = await workflow.execute_activity(
+                activities.wait_for_batch_completion,
+                args=[batch_requests, api_key, 300],  # Check every 5 minutes
+                heartbeat_timeout=timedelta(minutes=10),
+                start_to_close_timeout=timedelta(hours=24),
+                retry_policy=long_retry
+            )
+            
+            if completed_batch is None:
+                workflow.logger.error("No batches completed successfully within timeout period")
+                raise ApplicationError("Batch processing timed out")
+                
+            workflow.logger.info(f"Batch {completed_batch.batch_id} completed with status: {completed_batch.status}")
+            
+        except Exception as e:
+            workflow.logger.error(f"Error waiting for batch completion: {str(e)}")
+            raise ApplicationError(f"Batch monitoring failed: {str(e)}")
+        
+        # 6. Process the completed batch results
+        try:
+            if completed_batch.status == "completed":
+                processing_result = await workflow.execute_activity(
+                    activities.process_batch_results,
+                    args=[completed_batch, api_key],
+                    start_to_close_timeout=timedelta(minutes=30),
+                    retry_policy=standard_retry
+                )
+                workflow.logger.info(f"Processed {processing_result.success_count} results with {processing_result.error_count} errors")
+                
+                return {
+                    "status": "completed",
+                    "message": "Workflow completed successfully",
+                    "total_files": len(jsonl_batch_ids),
+                    "processed_files": len(batch_requests),
+                    "completed_batches": 1,
+                    "success_count": processing_result.success_count,
+                    "error_count": processing_result.error_count
+                }
+            else:
+                # Handle non-completed batch
+                error_info = await workflow.execute_activity(
+                    activities.handle_batch_error,
+                    args=[completed_batch, api_key],
+                    start_to_close_timeout=timedelta(minutes=5),
+                    retry_policy=standard_retry
+                )
+                workflow.logger.error(f"Batch {completed_batch.batch_id} failed with error: {error_info.error_message}")
+                
+                return {
+                    "status": "failed",
+                    "message": f"Batch processing failed: {error_info.error_message}",
+                    "error_type": error_info.error_type,
+                    "total_files": len(jsonl_batch_ids),
+                    "processed_files": len(batch_requests)
+                }
+                
+        except Exception as e:
+            workflow.logger.error(f"Failed to process batch results: {str(e)}")
+            raise ApplicationError(f"Result processing failed: {str(e)}")

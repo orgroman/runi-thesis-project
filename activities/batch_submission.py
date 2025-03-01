@@ -57,6 +57,7 @@ async def submit_batch_request(file_metadata: FileMetadata, api_key: str) -> Bat
         batch_request = BatchRequest(
             file_id=file_metadata.mongodb_id,
             openai_file_id=file_metadata.openai_file_id,
+            jsonl_batch_id=file_metadata.jsonl_batch_id,  # Link to JSONL batch
             batch_id=response.id,
             status="in_progress",
             created_at=now,
@@ -69,13 +70,20 @@ async def submit_batch_request(file_metadata: FileMetadata, api_key: str) -> Bat
         db = mongo_client.patent_negation
         batch_collection = db.batch_requests
         
-        result = batch_collection.insert_one(batch_request.model_dump())
+        result = batch_collection.insert_one(batch_request.model_dump(exclude={"mongodb_id"}))
         batch_request.mongodb_id = str(result.inserted_id)
         
         # Update file status
         files_collection = db.files
         files_collection.update_one(
             {"_id": file_metadata.mongodb_id},
+            {"$set": {"status": "processing", "batch_id": batch_request.batch_id}}
+        )
+        
+        # Update JSONL batch status
+        jsonl_collection = db.jsonl_batches
+        jsonl_collection.update_one(
+            {"_id": file_metadata.jsonl_batch_id},
             {"$set": {"status": "processing", "batch_id": batch_request.batch_id}}
         )
         

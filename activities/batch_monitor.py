@@ -1,6 +1,7 @@
 import logging
 import time
 from datetime import datetime
+from bson import ObjectId
 
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -45,7 +46,7 @@ async def monitor_batch_status(batch_request: BatchRequest, api_key: str) -> Bat
         
         # Update in MongoDB
         batch_collection.update_one(
-            {"_id": batch_request.mongodb_id},
+            {"_id": ObjectId(batch_request.mongodb_id)},
             {"$set": {
                 "status": batch_request.status,
                 "last_checked": datetime.now()
@@ -95,7 +96,7 @@ async def monitor_batch_status(batch_request: BatchRequest, api_key: str) -> Bat
                 update_fields["error"] = batch_request.error
             
             batch_collection.update_one(
-                {"_id": batch_request.mongodb_id},
+                {"_id": ObjectId(batch_request.mongodb_id)},
                 {"$set": update_fields}
             )
             

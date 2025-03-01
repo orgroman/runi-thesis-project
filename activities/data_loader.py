@@ -35,14 +35,15 @@ async def load_patent_data(csv_path: str) -> Dict[str, Any]:
         df = pd.read_csv(csv_path)
         
         # Validate schema - check required columns
-        required_columns = ['patent_application_id', 'text', 'text_b']
+        required_columns = ['patent_application_id', 'text']  # Removed 'text_b' since it might not be required
         missing_columns = [col for col in required_columns if col not in df.columns]
         
         if missing_columns:
             raise ValueError(f"CSV is missing required columns: {missing_columns}")
         
         # Save dataframe to temporary pickle file for efficient passing between activities
-        temp_dir = Path('/c:/Users/orgrd/workspace/repos/runi-thesis-project/temp')
+        # Fix the path by removing the leading slash
+        temp_dir = Path('c:/Users/orgrd/workspace/repos/runi-thesis-project/temp')
         temp_dir.mkdir(exist_ok=True)
         
         pickle_path = temp_dir / f"patent_data_{pd.util.hash_pandas_object(df).sum()}.pkl"

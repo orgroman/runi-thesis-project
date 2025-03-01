@@ -1,35 +1,36 @@
 import json
 import logging
-import os
+import io
 import pickle
-from pathlib import Path
+import os
 from typing import List, Dict, Any
+from datetime import datetime
 
 import pandas as pd
-from pydantic import BaseModel, Field
 from temporalio import activity
 
-from models import NegationResponse
+from models import JsonlBatch
+from mongodb import get_mongo_client
 
 logger = logging.getLogger(__name__)
 
 @activity.defn
 async def prepare_jsonl_files(dataframe_pickle_path: str, batch_size: int = 1000) -> List[str]:
     """
-    Prepare JSONL files for OpenAI batch processing.
+    Prepare JSONL batches and save them to MongoDB.
     
     Args:
         dataframe_pickle_path: Path to pickled DataFrame
         batch_size: Number of records per batch
         
     Returns:
-        List of paths to generated JSONL files
+        List of MongoDB IDs for the created JSONL batches
         
     Raises:
         FileNotFoundError: If the pickle file does not exist
-        Exception: For JSON serialization errors
+        Exception: For MongoDB or JSON serialization errors
     """
-    activity.logger.info(f"Preparing JSONL files from {dataframe_pickle_path}")
+    activity.logger.info(f"Preparing JSONL batches from {dataframe_pickle_path}")
     
     # Check if pickle file exists
     if not os.path.exists(dataframe_pickle_path):
@@ -40,13 +41,14 @@ async def prepare_jsonl_files(dataframe_pickle_path: str, batch_size: int = 1000
         with open(dataframe_pickle_path, 'rb') as f:
             df = pickle.load(f)
         
-        # Create output directory
-        output_dir = Path('/c:/Users/orgrd/workspace/repos/runi-thesis-project/output_jsonl')
-        output_dir.mkdir(exist_ok=True)
+        # Get MongoDB client
+        mongo_client = get_mongo_client()
+        db = mongo_client.patent_negation
+        jsonl_collection = db.jsonl_batches
         
         # Process in batches
         num_batches = len(df) // batch_size + (1 if len(df) % batch_size > 0 else 0)
-        output_files = []
+        batch_ids = []
         
         for i in range(num_batches):
             start_idx = i * batch_size
@@ -55,21 +57,35 @@ async def prepare_jsonl_files(dataframe_pickle_path: str, batch_size: int = 1000
             
             activity.logger.info(f"Processing batch {i + 1}/{num_batches}")
             
-            # Create JSONL file path
-            output_path = output_dir / f"batch_{i}.jsonl"
-            output_files.append(str(output_path))
+            # Create JSONL content in memory
+            jsonl_content = io.StringIO()
+            for _, row in batch_df.iterrows():
+                jsonl_line = create_jsonl_line(row)
+                jsonl_content.write(json.dumps(jsonl_line, ensure_ascii=False) + "\n")
             
-            # Write JSONL file
-            with open(output_path, "w", encoding='utf-8') as f:
-                for _, row in batch_df.iterrows():
-                    jsonl_line = create_jsonl_line(row)
-                    f.write(json.dumps(jsonl_line, ensure_ascii=False) + "\n")
+            # Create batch object
+            jsonl_batch = JsonlBatch(
+                batch_number=i,
+                content=jsonl_content.getvalue(),
+                record_count=len(batch_df),
+                created_at=datetime.now(),
+                status="created",
+                source_dataframe=dataframe_pickle_path
+            )
+            
+            # Save to MongoDB
+            result = jsonl_collection.insert_one(jsonl_batch.model_dump(exclude={"mongodb_id"}))
+            jsonl_batch.mongodb_id = str(result.inserted_id)
+            batch_ids.append(jsonl_batch.mongodb_id)
+            
+            # Clear StringIO buffer
+            jsonl_content.close()
         
-        activity.logger.info(f"Created {len(output_files)} JSONL files")
-        return output_files
+        activity.logger.info(f"Created {len(batch_ids)} JSONL batches in MongoDB")
+        return batch_ids
         
     except Exception as e:
-        activity.logger.error(f"Error preparing JSONL files: {str(e)}")
+        activity.logger.error(f"Error preparing JSONL batches: {str(e)}")
         raise
 
 def create_jsonl_line(row: pd.Series) -> Dict[str, Any]:
@@ -84,16 +100,36 @@ def create_jsonl_line(row: pd.Series) -> Dict[str, Any]:
         {"role": "user", "content": f"Analyze the following text: {text}"}
     ]
     
+    # Define the response schema
+    response_schema = {
+        "type": "object",
+        "properties": {
+            "negation_present": {
+                "type": "boolean",
+                "description": "Whether negation is present in the text"
+            },
+            "negation_types": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                },
+                "description": "Types of negation found (e.g., 'explicit', 'implicit', 'syntactic', etc.)"
+            },
+            "short_explanation": {
+                "type": "string",
+                "description": "Brief explanation of negation findings"
+            }
+        },
+        "required": ["negation_present", "short_explanation"]
+    }
+    
     # Define the body with proper schema
     body = {
         "model": "gpt-4-turbo-preview",
         "messages": messages,
         "response_format": {
             "type": "json_schema",
-            "json_schema": {
-                "name": "negation_response",
-                "schema": NegationResponse.model_json_schema()
-            }
+            "schema": response_schema
         },
         "max_tokens": 500
     }

@@ -116,5 +116,32 @@
             ],
             "justMyCode": false
         }
+    ],
+    "compounds": [
+        {
+            "name": "Temporal: Worker + Workflow",
+            "configurations": [
+                "Temporal: Worker", 
+                "Temporal: Start Workflow"
+            ],
+            "presentation": {
+                "group": "Temporal",
+                "order": 1
+            },
+            "stopAll": true
+        },
+        {
+            "name": "Temporal: Complete Setup",
+            "configurations": [
+                "Temporal: Worker", 
+                "Temporal: Debug Status",
+                "Temporal: Start Workflow"
+            ],
+            "presentation": {
+                "group": "Temporal",
+                "order": 2
+            },
+            "stopAll": true
+        }
     ]
 }

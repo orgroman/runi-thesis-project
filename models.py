@@ -1,7 +1,24 @@
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Union
-from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field, model_serializer
 
+class JsonlBatch(BaseModel):
+    """MongoDB model for JSONL batch storage"""
+    batch_number: int
+    content: str  # JSONL content as string
+    record_count: int
+    created_at: datetime = datetime.now()
+    status: str = "created"
+    source_dataframe: str  # Path to source DataFrame pickle
+    mongodb_id: Optional[str] = None
+
+    @model_serializer
+    def ser_model(self) -> Dict[str, Any]:
+        # Convert all datetime objects to ISO format strings
+        data = self.model_dump()
+        if 'created_at' in data and isinstance(data['created_at'], datetime):
+            data['created_at'] = data['created_at'].isoformat()
+        return data
 
 class NegationResponse(BaseModel):
     """Schema for OpenAI response about negation analysis."""
@@ -12,56 +29,74 @@ class NegationResponse(BaseModel):
     )
     short_explanation: str = Field(description="Brief explanation of negation findings")
 
-
 class FileMetadata(BaseModel):
-    """Metadata for tracking JSONL files for batch processing."""
-    mongodb_id: Optional[str] = None
-    file_path: str
+    """File metadata for tracking uploads."""
+    file_path: Optional[str] = None
     file_name: str
     file_size: int
-    status: str = "ready"  # ready, uploaded, processing, processed, error
     created_at: datetime
     uploaded_at: Optional[datetime] = None
+    status: str  # ready, uploaded, processing, completed, error
     openai_file_id: Optional[str] = None
     batch_id: Optional[str] = None
-    error: Optional[str] = None
     attempts: int = 0
+    mongodb_id: Optional[str] = None
+    jsonl_batch_id: Optional[str] = None  # Reference to JsonlBatch
 
+    @model_serializer
+    def ser_model(self) -> Dict[str, Any]:
+        # Convert all datetime objects to ISO format strings
+        data = self.model_dump()
+        for field in ['created_at', 'uploaded_at']:
+            if field in data and isinstance(data[field], datetime):
+                data[field] = data[field].isoformat()
+        return data
 
 class BatchRequest(BaseModel):
-    """Information about an OpenAI batch processing request."""
-    mongodb_id: Optional[str] = None
-    file_id: str  # Reference to FileMetadata in MongoDB
+    """OpenAI batch request metadata."""
+    file_id: str  # MongoDB ID of the file
     openai_file_id: str
-    batch_id: str
-    status: str  # in_progress, completed, failed, expired, cancelled, processed
+    jsonl_batch_id: Optional[str] = None  # Reference to JsonlBatch
+    batch_id: str  # OpenAI batch ID
+    status: str  # in_progress, completed, failed, expired
     created_at: datetime
     expires_at: datetime
     last_checked: datetime
     output_file_id: Optional[str] = None
     error: Optional[str] = None
-    processed_at: Optional[datetime] = None
-    success_count: Optional[int] = None
-    error_count: Optional[int] = None
+    mongodb_id: Optional[str] = None
 
+    @model_serializer
+    def ser_model(self) -> Dict[str, Any]:
+        data = self.model_dump()
+        for field in ['created_at', 'last_checked']:
+            if field in data and isinstance(data[field], datetime):
+                data[field] = data[field].isoformat()
+        return data
 
 class ProcessingResult(BaseModel):
-    """Results from processing a batch of patent data."""
+    """Results of batch processing."""
     batch_id: str
     file_id: str
-    raw_result_id: str  # Reference to raw results in MongoDB
     success_count: int
     error_count: int
-    processed_at: Optional[datetime] = None
+    raw_result_id: str  # MongoDB ID of raw results
 
+    @model_serializer
+    def ser_model(self) -> Dict[str, Any]:
+        return self.model_dump()
 
 class BatchError(BaseModel):
-    """Information about batch processing errors."""
+    """Error information for failed batches."""
     batch_id: str
-    file_id: Optional[str] = None
-    error_type: str
+    file_id: str
+    error_type: str  # rate_limit, processing_error, etc.
     error_message: str
-    timestamp: datetime = Field(default_factory=datetime.now)
-    retry_count: int = 0
-    retry_limit: int = 3
-    resolved: bool = False
+    timestamp: datetime
+
+    @model_serializer
+    def ser_model(self) -> Dict[str, Any]:
+        data = self.model_dump()
+        if 'timestamp' in data and isinstance(data['timestamp'], datetime):
+            data['timestamp'] = data['timestamp'].isoformat()
+        return data
