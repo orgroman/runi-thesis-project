@@ -61,6 +61,60 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/runi_thesis_project/clients/aiopika_df.py"
+        },
+        {
+            "name": "Temporal: Worker",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/worker.py",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env",
+            "justMyCode": false
+        },
+        {
+            "name": "Temporal: Start Workflow",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/starter.py",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env",
+            "args": [
+                "--batch-size", "1000"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Temporal: Debug Status",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug.py",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env",
+            "args": ["check"],
+            "justMyCode": false
+        },
+        {
+            "name": "Temporal: Debug Worker",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug.py",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env",
+            "args": ["worker"],
+            "justMyCode": false
+        },
+        {
+            "name": "Temporal: Complete Workflow",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_all.py",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env",
+            "args": [
+                "--csv", "C:\\Users\\orgrd\\workspace\\data\\patentmatch_test\\patentmatch_test_no_claims.csv",
+                "--batch-size", "1000" 
+            ],
+            "justMyCode": false
         }
     ]
 }
