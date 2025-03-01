@@ -9,7 +9,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from temporalio import activity
 
 from models import FileMetadata, BatchRequest
-from mongodb import get_mongo_client
+from mongodb_async import get_async_database  # Proper import for async database
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,7 @@ async def submit_batch_request(file_metadata: FileMetadata, api_key: str) -> Bat
     
     # Initialize AsyncOpenAI client
     client = AsyncOpenAI(api_key=api_key)  # Changed to AsyncOpenAI
-    mongo_client = get_mongo_client()
-    db = mongo_client.patent_negation
+    db = await get_async_database()
     files_collection = db.openai_files
     batch_collection = db.batch_requests
     
@@ -63,12 +62,12 @@ async def submit_batch_request(file_metadata: FileMetadata, api_key: str) -> Bat
             submitted_at=datetime.now()
         )
         
-        # Save to MongoDB
-        result = batch_collection.insert_one(batch_request.model_dump(exclude={"mongodb_id"}))
+        # Save to MongoDB with async
+        result = await batch_collection.insert_one(batch_request.model_dump(exclude={"mongodb_id"}))
         batch_request.mongodb_id = str(result.inserted_id)
         
-        # Update file status
-        files_collection.update_one(
+        # Update file status with async
+        await files_collection.update_one(
             {"_id": ObjectId(file_metadata.mongodb_id)},
             {"$set": {"status": "batch_submitted", "batch_id": batch_request.batch_id}}
         )
@@ -103,10 +102,9 @@ async def wait_for_batch_completion(batch_request: BatchRequest, api_key: str, t
     """
     activity.logger.info(f"Waiting for batch {batch_request.batch_id} completion")
     
-    # Initialize AsyncOpenAI client
-    client = AsyncOpenAI(api_key=api_key)  # Changed to AsyncOpenAI
-    mongo_client = get_mongo_client()
-    db = mongo_client.patent_negation
+    # Initialize AsyncOpenAI client and get async database
+    client = AsyncOpenAI(api_key=api_key)
+    db = await get_async_database()  # Use async database access
     batch_collection = db.batch_requests
     
     start_time = time.time()
@@ -125,8 +123,8 @@ async def wait_for_batch_completion(batch_request: BatchRequest, api_key: str, t
             response = await client.batches.retrieve(batch_request.batch_id)  # Added await
             batch_request.status = response.status
             
-            # Update in MongoDB
-            batch_collection.update_one(
+            # Update in MongoDB using async
+            await batch_collection.update_one(
                 {"_id": ObjectId(batch_request.mongodb_id)},
                 {"$set": {"status": batch_request.status, "last_checked": datetime.now()}}
             )
@@ -138,8 +136,8 @@ async def wait_for_batch_completion(batch_request: BatchRequest, api_key: str, t
                 if batch_request.status == "completed" and hasattr(response, "output_file_id"):
                     batch_request.output_file_id = response.output_file_id
                     
-                    # Update in MongoDB
-                    batch_collection.update_one(
+                    # Update in MongoDB using async
+                    await batch_collection.update_one(
                         {"_id": ObjectId(batch_request.mongodb_id)},
                         {"$set": {"output_file_id": batch_request.output_file_id}}
                     )

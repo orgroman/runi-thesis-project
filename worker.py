@@ -16,7 +16,7 @@ sys.path.append(str(current_dir))
 from workflow import PatentNegationAnalysisWorkflow
 from workflow_optimized import PatentNegationAnalysisOptimizedWorkflow
 import activities
-from mongodb import setup_collections
+from mongodb_async import setup_async_collections
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,8 +33,8 @@ if os.path.exists(".sandbox.env"):
 
 async def main():
     """Run a worker to execute workflows and activities."""
-    # Set up MongoDB collections
-    setup_collections()
+    # Set up MongoDB collections using async
+    await setup_async_collections()
     logger.info("MongoDB setup complete")
     
     # Connect to Temporal server

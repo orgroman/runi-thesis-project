@@ -5,7 +5,7 @@ from bson import ObjectId
 from temporalio import activity
 
 from models import FileMetadata
-from mongodb import get_mongo_client
+from mongodb_async import get_async_database
 
 logger = logging.getLogger(__name__)
 
@@ -28,18 +28,16 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
     activity.logger.info(f"Registering JSONL batch {jsonl_batch_id} in MongoDB")
     
     try:
-        # Get MongoDB client and retrieve the JSONL batch
-        client = get_mongo_client()
-        db = client.patent_negation
+        # Get MongoDB database and collections
+        db = await get_async_database()
         jsonl_collection = db.jsonl_batches
-        files_collection = db.openai_files  # Using the correct collection name
+        files_collection = db.openai_files
         
         # Convert string ID to ObjectId
         batch_obj_id = ObjectId(jsonl_batch_id)
         
-        # First check: Find if ALL batches for this dataframe already have files
-        # This is a batch-level optimization that would skip individual checks
-        jsonl_batch = jsonl_collection.find_one({"_id": batch_obj_id})
+        # First check: Find if batch already has files
+        jsonl_batch = await jsonl_collection.find_one({"_id": batch_obj_id})
         
         if not jsonl_batch:
             raise KeyError(f"JSONL batch with ID {jsonl_batch_id} not found in MongoDB")
@@ -49,7 +47,7 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
             activity.logger.info(f"JSONL batch {jsonl_batch_id} is already registered with file ID {jsonl_batch['file_id']}")
             
             # Retrieve the existing file metadata
-            file = files_collection.find_one({"_id": ObjectId(jsonl_batch["file_id"])})
+            file = await files_collection.find_one({"_id": ObjectId(jsonl_batch["file_id"])})
             
             if file:
                 file_metadata = FileMetadata(
@@ -72,7 +70,7 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
         base_file_name = f"batch_{jsonl_batch['batch_number']}.jsonl"
         
         # Check if a file with this name already exists
-        existing_file = files_collection.find_one({"file_name": base_file_name})
+        existing_file = await files_collection.find_one({"file_name": base_file_name})
         
         if existing_file:
             # If file exists but is not associated with this batch, create a unique name
@@ -93,11 +91,11 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
         )
         
         # Insert file metadata into MongoDB
-        result = files_collection.insert_one(file_metadata.model_dump(exclude={"mongodb_id"}))
+        result = await files_collection.insert_one(file_metadata.model_dump(exclude={"mongodb_id"}))
         file_metadata.mongodb_id = str(result.inserted_id)
         
         # Update JSONL batch with file reference
-        jsonl_collection.update_one(
+        await jsonl_collection.update_one(
             {"_id": jsonl_batch["_id"]},
             {"$set": {"status": "registered", "file_id": file_metadata.mongodb_id}}
         )

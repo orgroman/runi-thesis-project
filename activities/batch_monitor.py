@@ -3,19 +3,19 @@ import time
 from datetime import datetime
 from bson import ObjectId
 
-from openai import AsyncOpenAI  # Changed from OpenAI to AsyncOpenAI
+from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 from temporalio import activity
 
 from models import BatchRequest
-from mongodb import get_mongo_client
+from mongodb_async import get_async_database  # Fix import to use the async database
 
 logger = logging.getLogger(__name__)
 
 @activity.defn
 @retry(
-    stop=stop_after_attempt(20),  # More retries for monitoring
-    wait=wait_exponential(multiplier=1, min=4, max=300),  # Longer wait times
+    stop=stop_after_attempt(20),
+    wait=wait_exponential(multiplier=1, min=4, max=300),
 )
 async def monitor_batch_status(batch_request: BatchRequest, api_key: str) -> BatchRequest:
     """
@@ -33,19 +33,18 @@ async def monitor_batch_status(batch_request: BatchRequest, api_key: str) -> Bat
     """
     activity.logger.info(f"Monitoring batch {batch_request.batch_id}")
     
-    # Initialize AsyncOpenAI client
-    client = AsyncOpenAI(api_key=api_key)  # Changed to AsyncOpenAI
-    mongo_client = get_mongo_client()
-    db = mongo_client.patent_negation
+    # Initialize AsyncOpenAI client and get the async database
+    client = AsyncOpenAI(api_key=api_key)
+    db = await get_async_database()  # Use Motor async DB
     batch_collection = db.batch_requests
     
     # Initial check to ensure the batch exists
     try:
-        response = await client.batches.retrieve(batch_request.batch_id)  # Added await
+        response = await client.batches.retrieve(batch_request.batch_id)
         batch_request.status = response.status
         
-        # Update in MongoDB
-        batch_collection.update_one(
+        # Update in MongoDB using async
+        await batch_collection.update_one(
             {"_id": ObjectId(batch_request.mongodb_id)},
             {"$set": {
                 "status": batch_request.status,
@@ -71,7 +70,7 @@ async def monitor_batch_status(batch_request: BatchRequest, api_key: str) -> Bat
         
         try:
             # Check batch status
-            response = await client.batches.retrieve(batch_request.batch_id)  # Added await
+            response = await client.batches.retrieve(batch_request.batch_id)
             batch_request.status = response.status
             batch_request.last_checked = datetime.now()
             
@@ -83,7 +82,7 @@ async def monitor_batch_status(batch_request: BatchRequest, api_key: str) -> Bat
             if response.status == "failed" and hasattr(response, 'error'):
                 batch_request.error = response.error
             
-            # Update in MongoDB
+            # Update in MongoDB using async
             update_fields = {
                 "status": batch_request.status,
                 "last_checked": batch_request.last_checked
@@ -95,7 +94,7 @@ async def monitor_batch_status(batch_request: BatchRequest, api_key: str) -> Bat
             if batch_request.error:
                 update_fields["error"] = batch_request.error
             
-            batch_collection.update_one(
+            await batch_collection.update_one(
                 {"_id": ObjectId(batch_request.mongodb_id)},
                 {"$set": update_fields}
             )

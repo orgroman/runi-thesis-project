@@ -9,7 +9,7 @@ from openai import AsyncOpenAI  # Changed from OpenAI to AsyncOpenAI
 from temporalio import activity
 
 from models import BatchRequest, ProcessingResult
-from mongodb import get_mongo_client
+from mongodb_async import get_async_database
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,7 @@ async def process_batch_results(batch_request: BatchRequest, api_key: str) -> Pr
     
     # Initialize AsyncOpenAI client and MongoDB
     client = AsyncOpenAI(api_key=api_key)  # Changed to AsyncOpenAI
-    mongo_client = get_mongo_client()
-    db = mongo_client.patent_negation
+    db = await get_async_database()
     results_collection = db.negation_results
     batch_collection = db.batch_requests
     
@@ -82,8 +81,8 @@ async def process_batch_results(batch_request: BatchRequest, api_key: str) -> Pr
                         "processed_at": datetime.now()
                     }
                     
-                    # Save to MongoDB
-                    results_collection.insert_one(result_doc)
+                    # Save to MongoDB using async
+                    await results_collection.insert_one(result_doc)
                     success_count += 1
                     results.append(result_doc)
                     
@@ -91,8 +90,8 @@ async def process_batch_results(batch_request: BatchRequest, api_key: str) -> Pr
                     activity.logger.error(f"Error processing result: {str(e)}")
                     error_count += 1
         
-        # Update batch status
-        batch_collection.update_one(
+        # Update batch status with async MongoDB
+        await batch_collection.update_one(
             {"_id": ObjectId(batch_request.mongodb_id)},
             {"$set": {
                 "status": "processed", 

@@ -2,32 +2,29 @@ import logging
 import tempfile
 import asyncio
 from datetime import datetime
-from pathlib import Path
 from bson import ObjectId
 from typing import List, Optional
 
-from openai import AsyncOpenAI  # Changed from OpenAI to AsyncOpenAI
+from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from temporalio import activity
 
 from models import FileMetadata
-from mongodb import get_mongo_client
+from mongodb_async import get_async_database
 
 logger = logging.getLogger(__name__)
 
 async def upload_single_file(file_metadata: FileMetadata, api_key: str) -> Optional[FileMetadata]:
     """
-    Upload a single file to OpenAI.
-    This function is designed to be called concurrently with asyncio.gather.
+    Upload a single file to OpenAI using async MongoDB.
     """
     try:
-        # Get MongoDB client and retrieve the JSONL content
-        mongo_client = get_mongo_client()
-        db = mongo_client.patent_negation
+        # Get MongoDB database and collections
+        db = await get_async_database()
         jsonl_collection = db.jsonl_batches
         
         # Convert string ID to ObjectId for MongoDB query
-        jsonl_batch = jsonl_collection.find_one({"_id": ObjectId(file_metadata.jsonl_batch_id)})
+        jsonl_batch = await jsonl_collection.find_one({"_id": ObjectId(file_metadata.jsonl_batch_id)})
         if not jsonl_batch:
             activity.logger.error(f"JSONL batch not found with ID: {file_metadata.jsonl_batch_id}")
             return None
@@ -38,11 +35,11 @@ async def upload_single_file(file_metadata: FileMetadata, api_key: str) -> Optio
             temp_file_path = temp_file.name
         
         # Initialize AsyncOpenAI client
-        client = AsyncOpenAI(api_key=api_key)  # Changed to AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key)
         
         # Upload file to OpenAI
         with open(temp_file_path, 'rb') as file:
-            response = await client.files.create(  # Added await
+            response = await client.files.create(
                 file=file,
                 purpose='batch'
             )
@@ -53,8 +50,8 @@ async def upload_single_file(file_metadata: FileMetadata, api_key: str) -> Optio
         file_metadata.uploaded_at = datetime.now()
         
         # Update in MongoDB
-        files_collection = db.openai_files  # Changed from "files" to "openai_files"
-        files_collection.update_one(
+        files_collection = db.openai_files
+        await files_collection.update_one(
             {"_id": ObjectId(file_metadata.mongodb_id)},
             {"$set": {
                 "openai_file_id": file_metadata.openai_file_id,
@@ -72,11 +69,10 @@ async def upload_single_file(file_metadata: FileMetadata, api_key: str) -> Optio
         
         if hasattr(file_metadata, 'mongodb_id'):
             try:
-                mongo_client = get_mongo_client()
-                db = mongo_client.patent_negation
-                files_collection = db.openai_files  # Changed from "files" to "openai_files"
+                db = await get_async_database()
+                files_collection = db.openai_files
                 
-                files_collection.update_one(
+                await files_collection.update_one(
                     {"_id": ObjectId(file_metadata.mongodb_id)},
                     {"$set": {
                         "status": "upload_failed",

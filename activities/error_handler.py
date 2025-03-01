@@ -2,35 +2,22 @@ import logging
 from datetime import datetime
 from bson import ObjectId
 
-from openai import AsyncOpenAI  # Changed from OpenAI to AsyncOpenAI
+from openai import AsyncOpenAI
 from temporalio import activity
 
 from models import BatchRequest, BatchError
-from mongodb import get_mongo_client
+from mongodb_async import get_async_database  # Fixed import for async database
 
 logger = logging.getLogger(__name__)
 
 @activity.defn
 async def handle_batch_error(batch_request: BatchRequest, api_key: str) -> BatchError:
-    """
-    Handle errors for failed batch requests.
-    
-    Args:
-        batch_request: Failed BatchRequest
-        api_key: OpenAI API key
-        
-    Returns:
-        BatchError with error details
-        
-    Raises:
-        Exception: For MongoDB errors
-    """
+    """Handle errors for failed batch requests."""
     activity.logger.info(f"Handling error for batch {batch_request.batch_id}")
     
     # Initialize client and database
-    client = AsyncOpenAI(api_key=api_key)  # Changed to AsyncOpenAI
-    mongo_client = get_mongo_client()
-    db = mongo_client.patent_negation
+    client = AsyncOpenAI(api_key=api_key)
+    db = await get_async_database()  # Use async database
     
     # Determine error type
     error_message = batch_request.error or "Unknown error"
@@ -48,11 +35,11 @@ async def handle_batch_error(batch_request: BatchRequest, api_key: str) -> Batch
     try:
         # Record error in MongoDB
         errors_collection = db.failed_batches
-        result = errors_collection.insert_one(batch_error.model_dump())
+        result = await errors_collection.insert_one(batch_error.model_dump())
         
         # Update batch status
         batch_collection = db.batch_requests
-        batch_collection.update_one(
+        await batch_collection.update_one(
             {"_id": ObjectId(batch_request.mongodb_id)},
             {"$set": {"status": "failed", "error": error_message}}
         )
@@ -63,13 +50,13 @@ async def handle_batch_error(batch_request: BatchRequest, api_key: str) -> Batch
             
             try:
                 # Try to cancel the batch if possible
-                await client.batches.cancel(batch_request.batch_id)  # Added await
+                await client.batches.cancel(batch_request.batch_id)
             except Exception as e:
                 activity.logger.error(f"Failed to cancel batch {batch_request.batch_id}: {str(e)}")
             
             # Reset file status to allow resubmission
             files_collection = db.openai_files
-            files_collection.update_one(
+            await files_collection.update_one(
                 {"_id": ObjectId(batch_request.file_id)},
                 {"$set": {"status": "uploaded", "batch_id": None}}
             )
