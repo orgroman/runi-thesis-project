@@ -1,146 +1,117 @@
 import json
 import logging
+import tempfile
+from datetime import datetime
+from bson import ObjectId
+from typing import List, Dict, Any
 
-from openai import OpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from openai import AsyncOpenAI  # Changed from OpenAI to AsyncOpenAI
 from temporalio import activity
 
-from models import BatchRequest, ProcessingResult, NegationResponse
+from models import BatchRequest, ProcessingResult
 from mongodb import get_mongo_client
 
 logger = logging.getLogger(__name__)
 
 @activity.defn
-@retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=4, max=60),
-    retry=retry_if_exception_type((ConnectionError, TimeoutError))
-)
 async def process_batch_results(batch_request: BatchRequest, api_key: str) -> ProcessingResult:
     """
-    Process and store results from a completed batch.
+    Process the results of a completed batch request.
     
     Args:
-        batch_request: Completed BatchRequest with output_file_id
+        batch_request: Completed BatchRequest with output file ID
         api_key: OpenAI API key
         
     Returns:
-        ProcessingResult with statistics
+        ProcessingResult with success and error counts
         
     Raises:
-        ValueError: If batch is not completed or has no output_file_id
-        Exception: For OpenAI API or processing errors
+        ValueError: If batch is not in completed state or missing output file
+        Exception: For OpenAI API errors or MongoDB errors
     """
     activity.logger.info(f"Processing results for batch {batch_request.batch_id}")
     
-    # Validate batch request
-    if batch_request.status != "completed":
-        raise ValueError(f"Cannot process results for non-completed batch {batch_request.batch_id}")
-        
-    if not batch_request.output_file_id:
-        raise ValueError(f"Batch {batch_request.batch_id} has no output file ID")
+    # Validate batch state
+    if batch_request.status != "completed" or not batch_request.output_file_id:
+        raise ValueError(f"Batch {batch_request.batch_id} is not in completed state or missing output file")
     
-    # Initialize clients
-    client = OpenAI(api_key=api_key)
+    # Initialize AsyncOpenAI client and MongoDB
+    client = AsyncOpenAI(api_key=api_key)  # Changed to AsyncOpenAI
     mongo_client = get_mongo_client()
     db = mongo_client.patent_negation
+    results_collection = db.negation_results
+    batch_collection = db.batch_requests
     
     try:
-        # Download batch results
-        activity.logger.info(f"Downloading results from file {batch_request.output_file_id}")
-        response = client.files.retrieve_content(batch_request.output_file_id)
+        # Download results to temp file
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.jsonl', delete=False) as temp_file:
+            temp_path = temp_file.name
+            
+            # Stream file content to temp file
+            response = await client.files.content(batch_request.output_file_id)  # Added await
+            async for chunk in response.iter_bytes():  # Updated for async iteration
+                temp_file.write(chunk)
         
-        # Save raw results to MongoDB
-        raw_results_collection = db.batch_results_raw
-        raw_result_id = raw_results_collection.insert_one({
-            "batch_id": batch_request.batch_id,
-            "content": response,
-            "processed_at": activity.info().started_at,
-        }).inserted_id
-        
-        # Process each line (assuming response is JSONL)
-        results = []
-        error_count = 0
+        # Process JSONL results
         success_count = 0
+        error_count = 0
+        results = []
         
-        for line in response.strip().split('\n'):
-            try:
-                result_json = json.loads(line)
+        with open(temp_path, 'r') as f:
+            for line in f:
+                result = json.loads(line)
                 
-                # Extract the custom_id to identify the record
-                custom_id = result_json.get('custom_id', '')
-                
-                # Extract the negation analysis from the response
-                if 'body' in result_json:
-                    response_content = result_json['body']
-                    
-                    # Parse the response into our NegationResponse model
-                    negation_data = NegationResponse(**response_content)
-                    
-                    # Store in MongoDB
-                    results_collection = db.negation_results
-                    result_id = results_collection.insert_one({
-                        "custom_id": custom_id,
-                        "batch_id": batch_request.batch_id,
-                        "negation_present": negation_data.negation_present,
-                        "negation_types": negation_data.negation_types,
-                        "explanation": negation_data.short_explanation,
-                        "processed_at": activity.info().started_at,
-                    }).inserted_id
-                    
-                    results.append({
-                        "custom_id": custom_id,
-                        "result_id": str(result_id),
-                        "negation_present": negation_data.negation_present
-                    })
-                    
-                    success_count += 1
-                else:
-                    # Handle error case
-                    error_collection = db.processing_errors
-                    error_collection.insert_one({
-                        "custom_id": custom_id,
-                        "batch_id": batch_request.batch_id,
-                        "error": "Missing response body",
-                        "raw_response": result_json,
-                        "processed_at": activity.info().started_at,
-                    })
+                # Check if result has an error
+                if 'error' in result:
                     error_count += 1
+                    continue
+                
+                # Extract useful data
+                try:
+                    custom_id = result.get('custom_id', '')
+                    # Parse response content - assuming it's already JSON
+                    response_data = json.loads(result['response']['content'])
                     
-            except Exception as e:
-                # Log and store parsing errors
-                activity.logger.error(f"Error processing result line: {str(e)}")
-                error_collection = db.processing_errors
-                error_collection.insert_one({
-                    "batch_id": batch_request.batch_id,
-                    "error": str(e),
-                    "raw_line": line,
-                    "processed_at": activity.info().started_at,
-                })
-                error_count += 1
-        
-        # Create and store processing result
-        processing_result = ProcessingResult(
-            batch_id=batch_request.batch_id,
-            file_id=batch_request.file_id,
-            success_count=success_count,
-            error_count=error_count,
-            raw_result_id=str(raw_result_id),
-        )
+                    # Create result document
+                    result_doc = {
+                        "custom_id": custom_id,
+                        "batch_id": batch_request.batch_id,
+                        "negation_present": response_data.get('negation_present', False),
+                        "negation_types": response_data.get('negation_types', []),
+                        "explanation": response_data.get('short_explanation', ''),
+                        "processed_at": datetime.now()
+                    }
+                    
+                    # Save to MongoDB
+                    results_collection.insert_one(result_doc)
+                    success_count += 1
+                    results.append(result_doc)
+                    
+                except Exception as e:
+                    activity.logger.error(f"Error processing result: {str(e)}")
+                    error_count += 1
         
         # Update batch status
-        batch_collection = db.batch_requests
         batch_collection.update_one(
-            {"_id": batch_request.mongodb_id},
+            {"_id": ObjectId(batch_request.mongodb_id)},
             {"$set": {
-                "status": "processed",
-                "processed_at": activity.info().started_at,
+                "status": "processed", 
+                "processed_at": datetime.now(),
                 "success_count": success_count,
                 "error_count": error_count
             }}
         )
         
-        activity.logger.info(f"Successfully processed {success_count} results with {error_count} errors")
+        # Create processing result
+        processing_result = ProcessingResult(
+            batch_id=batch_request.batch_id,
+            output_file_id=batch_request.output_file_id,
+            success_count=success_count,
+            error_count=error_count,
+            processed_at=datetime.now()
+        )
+        
+        activity.logger.info(f"Successfully processed {success_count} results with {error_count} errors for batch {batch_request.batch_id}")
         return processing_result
         
     except Exception as e:

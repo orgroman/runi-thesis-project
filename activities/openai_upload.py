@@ -6,7 +6,7 @@ from pathlib import Path
 from bson import ObjectId
 from typing import List, Optional
 
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI  # Changed from OpenAI to AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from temporalio import activity
 
@@ -37,12 +37,12 @@ async def upload_single_file(file_metadata: FileMetadata, api_key: str) -> Optio
             temp_file.write(jsonl_batch["content"])
             temp_file_path = temp_file.name
         
-        # Initialize OpenAI client
-        client = OpenAI(api_key=api_key)
+        # Initialize AsyncOpenAI client
+        client = AsyncOpenAI(api_key=api_key)  # Changed to AsyncOpenAI
         
         # Upload file to OpenAI
         with open(temp_file_path, 'rb') as file:
-            response = client.files.create(
+            response = await client.files.create(  # Added await
                 file=file,
                 purpose='batch'
             )

@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 from bson import ObjectId
 
-from openai import OpenAI
+from openai import AsyncOpenAI  # Changed from OpenAI to AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 from temporalio import activity
 
@@ -33,15 +33,15 @@ async def monitor_batch_status(batch_request: BatchRequest, api_key: str) -> Bat
     """
     activity.logger.info(f"Monitoring batch {batch_request.batch_id}")
     
-    # Initialize OpenAI client
-    client = OpenAI(api_key=api_key)
+    # Initialize AsyncOpenAI client
+    client = AsyncOpenAI(api_key=api_key)  # Changed to AsyncOpenAI
     mongo_client = get_mongo_client()
     db = mongo_client.patent_negation
     batch_collection = db.batch_requests
     
     # Initial check to ensure the batch exists
     try:
-        response = client.batches.retrieve(batch_request.batch_id)
+        response = await client.batches.retrieve(batch_request.batch_id)  # Added await
         batch_request.status = response.status
         
         # Update in MongoDB
@@ -71,7 +71,7 @@ async def monitor_batch_status(batch_request: BatchRequest, api_key: str) -> Bat
         
         try:
             # Check batch status
-            response = client.batches.retrieve(batch_request.batch_id)
+            response = await client.batches.retrieve(batch_request.batch_id)  # Added await
             batch_request.status = response.status
             batch_request.last_checked = datetime.now()
             
