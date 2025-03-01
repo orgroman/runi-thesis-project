@@ -1,19 +1,17 @@
 import logging
 from datetime import datetime
+from typing import Optional, List
 from bson import ObjectId
 
-from temporalio import activity
-
-from models import FileMetadata
+from models import FileMetadata, JsonlBatch
 from mongodb import get_mongo_client
 
 logger = logging.getLogger(__name__)
 
-@activity.defn
-async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
+async def register_file_in_mongodb_async(jsonl_batch_id: str) -> FileMetadata:
     """
     Register a JSONL batch from MongoDB as a file for OpenAI processing.
-    If already registered, return the existing file metadata.
+    This is a native Python async function (not a Temporal activity).
     
     Args:
         jsonl_batch_id: MongoDB ID of the JSONL batch
@@ -25,20 +23,17 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
         KeyError: If the JSONL batch does not exist
         Exception: For MongoDB connection or insertion errors
     """
-    activity.logger.info(f"Registering JSONL batch {jsonl_batch_id} in MongoDB")
+    logger.info(f"Registering JSONL batch {jsonl_batch_id} in MongoDB")
     
     try:
         # Get MongoDB client and retrieve the JSONL batch
         client = get_mongo_client()
         db = client.patent_negation
         jsonl_collection = db.jsonl_batches
-        files_collection = db.openai_files  # Using the correct collection name
+        files_collection = db.openai_files
         
         # Convert string ID to ObjectId
         batch_obj_id = ObjectId(jsonl_batch_id)
-        
-        # First check: Find if ALL batches for this dataframe already have files
-        # This is a batch-level optimization that would skip individual checks
         jsonl_batch = jsonl_collection.find_one({"_id": batch_obj_id})
         
         if not jsonl_batch:
@@ -46,7 +41,7 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
         
         # Check if batch is already registered with a file
         if jsonl_batch.get("file_id") and jsonl_batch.get("status") == "registered":
-            activity.logger.info(f"JSONL batch {jsonl_batch_id} is already registered with file ID {jsonl_batch['file_id']}")
+            logger.info(f"JSONL batch {jsonl_batch_id} is already registered with file ID {jsonl_batch['file_id']}")
             
             # Retrieve the existing file metadata
             file = files_collection.find_one({"_id": ObjectId(jsonl_batch["file_id"])})
@@ -78,7 +73,7 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
             # If file exists but is not associated with this batch, create a unique name
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             file_name = f"batch_{jsonl_batch['batch_number']}_{timestamp}.jsonl"
-            activity.logger.info(f"File name {base_file_name} already exists, using {file_name} instead")
+            logger.info(f"File name {base_file_name} already exists, using {file_name} instead")
         else:
             file_name = base_file_name
         
@@ -102,9 +97,49 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
             {"$set": {"status": "registered", "file_id": file_metadata.mongodb_id}}
         )
         
-        activity.logger.info(f"JSONL batch registered as file with ID: {file_metadata.mongodb_id}")
+        logger.info(f"JSONL batch registered as file with ID: {file_metadata.mongodb_id}")
         return file_metadata
         
     except Exception as e:
-        activity.logger.error(f"Error registering JSONL batch in MongoDB: {str(e)}")
+        logger.error(f"Error registering JSONL batch in MongoDB: {str(e)}")
         raise
+
+async def register_files_batch_async(jsonl_batch_ids: List[str], concurrency_limit: int = 10) -> List[FileMetadata]:
+    """
+    Register multiple JSONL batches concurrently using Python's asyncio.
+    This performs concurrent operations using Python's native asyncio capabilities.
+    
+    Args:
+        jsonl_batch_ids: List of MongoDB IDs for JSONL batches
+        concurrency_limit: Maximum number of concurrent registrations
+        
+    Returns:
+        List of FileMetadata objects that were successfully registered
+    """
+    import asyncio
+    
+    logger.info(f"Registering {len(jsonl_batch_ids)} JSONL batches with concurrency {concurrency_limit}")
+    file_metadatas = []
+    
+    # Create a semaphore to limit concurrency
+    semaphore = asyncio.Semaphore(concurrency_limit)
+    
+    async def register_with_semaphore(batch_id):
+        async with semaphore:
+            try:
+                return await register_file_in_mongodb_async(batch_id)
+            except Exception as e:
+                logger.error(f"Failed to register batch {batch_id}: {str(e)}")
+                return None
+    
+    # Create tasks for all batch IDs
+    tasks = [register_with_semaphore(batch_id) for batch_id in jsonl_batch_ids]
+    
+    # Wait for all tasks to complete
+    results = await asyncio.gather(*tasks)
+    
+    # Filter out None values (failed registrations)
+    file_metadatas = [result for result in results if result is not None]
+    
+    logger.info(f"Successfully registered {len(file_metadatas)} of {len(jsonl_batch_ids)} JSONL batches")
+    return file_metadatas

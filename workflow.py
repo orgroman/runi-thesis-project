@@ -91,11 +91,10 @@ class PatentNegationAnalysisWorkflow:
         
         # Upload files to OpenAI concurrently
         try:
+            # Fix: Pass arguments as a list rather than multiple positional arguments
             uploaded_files = await workflow.execute_activity(
-                activities.upload_files_to_openai,  # New concurrent upload activity
-                file_metadatas,
-                api_key,
-                5,  # Max 5 concurrent uploads
+                activities.upload_files_to_openai,
+                args=[file_metadatas, api_key, 5],  # Combine all arguments into a list
                 start_to_close_timeout=timedelta(hours=2),
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )

@@ -115,6 +115,19 @@
                 "--batch-size", "1000" 
             ],
             "justMyCode": false
+        },
+        {
+            "name": "Temporal: Optimized Workflow",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_optimized.py",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env",
+            "args": [
+                "C:\\Users\\orgrd\\workspace\\data\\patentmatch_test\\patentmatch_test_no_claims.csv",
+                "1000"
+            ],
+            "justMyCode": false
         }
     ],
     "compounds": [
@@ -140,6 +153,18 @@
             "presentation": {
                 "group": "Temporal",
                 "order": 2
+            },
+            "stopAll": true
+        },
+        {
+            "name": "Temporal: Worker + Optimized Workflow",
+            "configurations": [
+                "Temporal: Worker", 
+                "Temporal: Optimized Workflow"
+            ],
+            "presentation": {
+                "group": "Temporal",
+                "order": 3
             },
             "stopAll": true
         }
