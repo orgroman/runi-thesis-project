@@ -16,7 +16,7 @@ sys.path.append(str(current_dir))
 from workflow import PatentNegationAnalysisWorkflow
 from workflow_optimized import PatentNegationAnalysisOptimizedWorkflow
 import activities
-from mongodb import setup_collections, get_mongo_client
+from mongodb import setup_collections
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,28 +49,26 @@ async def main():
             if callable(attr) and hasattr(attr, "__module__") and attr.__module__.startswith("activities."):
                 activity_list.append(attr)
     
-    logger.info(f"Found {len(activity_list)} activities to register")
+    # Define workflows to register
+    workflow_list = [
+        PatentNegationAnalysisWorkflow,
+        PatentNegationAnalysisOptimizedWorkflow
+    ]
+    
+    # Log workflows and activities being registered
+    logger.info("Registering workflows:")
+    for workflow in workflow_list:
+        logger.info(f" - {workflow.__name__}")
+    
+    logger.info(f"Registering {len(activity_list)} activities")
     
     # Create worker with registered workflows and activities
     worker = Worker(
         client,
         task_queue="patent-negation-task-queue",
-        workflows=[
-            PatentNegationAnalysisWorkflow,
-            PatentNegationAnalysisOptimizedWorkflow
-        ],
-        activities=activity_list  # Pass the list of activity functions
+        workflows=workflow_list,
+        activities=activity_list
     )
-    
-    # Print available workflows
-    logger.info("Available workflows:")
-    for workflow_name in worker._workflow_registry:
-        logger.info(f" - {workflow_name}")
-    
-    # Print available activities
-    logger.info("Available activities:")
-    for activity_name in worker._activity_registry:
-        logger.info(f" - {activity_name}")
     
     # Run worker until interrupted
     logger.info("Starting worker")
