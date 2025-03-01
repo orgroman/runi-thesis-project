@@ -7,6 +7,7 @@ from models import FileMetadata, JsonlBatch
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo.errors import ConnectionFailure
 import os
+
 logger = logging.getLogger(__name__)
 
 # MongoDB connection parameters
