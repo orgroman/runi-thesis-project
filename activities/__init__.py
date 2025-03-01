@@ -9,6 +9,7 @@ from .result_processor import process_batch_results
 from .error_handler import handle_batch_error
 from .file_operations import get_file_metadata_by_id
 from .jsonl_preparation_optimized import check_files_exist_for_dataframe
+from .openai_check import check_existing_openai_files
 
 __all__ = [
     "authenticate_with_azure",
@@ -24,4 +25,5 @@ __all__ = [
     "handle_batch_error",
     "get_file_metadata_by_id",
     "check_files_exist_for_dataframe",
+    "check_existing_openai_files",
 ]

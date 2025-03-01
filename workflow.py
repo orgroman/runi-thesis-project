@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from datetime import timedelta
 from typing import List, Dict, Any, Optional
 
@@ -73,44 +74,63 @@ class PatentNegationAnalysisWorkflow:
             workflow.logger.error(f"Failed to prepare JSONL batches: {str(e)}")
             raise ApplicationError(f"JSONL preparation failed: {str(e)}")
             
-        # 4. Register batches in MongoDB and upload to OpenAI
-        file_metadatas = []
-        
-        # Register all batches in MongoDB as files
-        for jsonl_batch_id in jsonl_batch_ids:
-            try:
-                file_metadata = await workflow.execute_activity(
-                    activities.register_file_in_mongodb,
-                    jsonl_batch_id,
-                    start_to_close_timeout=timedelta(minutes=5),
-                    retry_policy=RetryPolicy(maximum_attempts=3),
-                )
-                file_metadatas.append(file_metadata)
-            except Exception as e:
-                workflow.logger.error(f"Failed to process batch {jsonl_batch_id}: {str(e)}")
-        
-        # Upload files to OpenAI concurrently
+        # 4. OPTIMIZATION: Check if files already exist in MongoDB and are uploaded to OpenAI
         try:
-            # Fix: Pass arguments as a list rather than multiple positional arguments
-            uploaded_files = await workflow.execute_activity(
-                activities.upload_files_to_openai,
-                args=[file_metadatas, api_key, 5],  # Combine all arguments into a list
-                start_to_close_timeout=timedelta(hours=2),
-                retry_policy=RetryPolicy(maximum_attempts=3),
+            all_uploaded, file_metadatas = await workflow.execute_activity(
+                activities.check_existing_openai_files,
+                jsonl_batch_ids,
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=standard_retry
             )
             
-            workflow.logger.info(f"Successfully uploaded {len(uploaded_files)} files to OpenAI")
+            if all_uploaded and file_metadatas:
+                workflow.logger.info(f"All {len(file_metadatas)} files are already registered and uploaded to OpenAI")
+                # Skip registration and upload steps
+            else:
+                # If not all files exist, register them
+                file_metadatas = []
+                for i, jsonl_batch_id in enumerate(jsonl_batch_ids):
+                    try:
+                        workflow.logger.info(f"Registering file {i+1}/{len(jsonl_batch_ids)}")
+                        file_metadata = await workflow.execute_activity(
+                            activities.register_file_in_mongodb,
+                            jsonl_batch_id,
+                            start_to_close_timeout=timedelta(minutes=5),
+                            retry_policy=standard_retry
+                        )
+                        file_metadatas.append(file_metadata)
+                    except Exception as e:
+                        workflow.logger.error(f"Failed to register file: {str(e)}")
+                
+                workflow.logger.info(f"Registered {len(file_metadatas)} files")
+                
+                # Upload files to OpenAI
+                uploaded_files = await workflow.execute_activity(
+                    activities.upload_files_to_openai,
+                    file_metadatas,
+                    api_key,
+                    start_to_close_timeout=timedelta(minutes=60),
+                    retry_policy=standard_retry
+                )
+                
+                workflow.logger.info(f"Uploaded {len(uploaded_files)} files to OpenAI")
+                
+                # Update file_metadatas with OpenAI file IDs
+                file_metadatas = uploaded_files
+        
         except Exception as e:
-            workflow.logger.error(f"Failed to upload files: {str(e)}")
-            return {"status": "failed", "error": str(e)}
+            workflow.logger.error(f"Failed to check or process files: {str(e)}")
+            workflow.logger.info("Falling back to standard registration and upload")
+            
+            # Continue with default file registration and upload
+            file_metadatas = []
         
-        # Continue with the rest of your workflow...
-        
-        return {
-            "status": "completed",
-            "csv_path": csv_path,
-            "batch_size": batch_size,
-            "row_count": df_info["row_count"],
-            "batch_count": len(jsonl_batch_ids),
-            "processed_count": len(uploaded_files),
-        }
+            # Register all batches in MongoDB as files
+            for jsonl_batch_id in jsonl_batch_ids:
+                try:
+                    file_metadata = await workflow.execute_activity(
+                        activities.register_file_in_mongodb,
+                        jsonl_batch_id,
+                        start_to_close_timeout=timedelta(minutes=5),
+                        retry_policy=RetryPolicy(maximum_attempts=3),
+                    )

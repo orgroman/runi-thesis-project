@@ -128,6 +128,104 @@
                 "1000"
             ],
             "justMyCode": false
+        },
+        {
+            "name": "Airflow: Start DAG",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/airflow_scripts/trigger_dag.py",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env",
+            "args": [
+                "--dag-id", "batch_submission",
+                "--conf", "{'test': true}"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Airflow: Run Task",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/airflow_scripts/run_task.py",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env",
+            "args": [
+                "--dag-id", "batch_submission",
+                "--task-id", "get_files_to_submit",
+                "--execution-date", "2023-11-01"
+            ],
+            "justMyCode": false
+        },
+        {
+            "name": "Airflow: Start Local Services",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/airflow-docker && docker-compose up -d",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+        {
+            "name": "Airflow: Stop Local Services",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/airflow-docker && docker-compose down",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+        {
+            "name": "Airflow: Check Setup",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/airflow_scripts/check_airflow_setup.py",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.secrets.env",
+            "args": ["--debug"],
+            "justMyCode": false
+        },
+        {
+            "name": "Airflow: Test Connection",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/airflow_scripts/test_airflow_connection.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--username", "airflow",
+                "--password", "airflow"
+            ]
+        },
+        {
+            "name": "Airflow: Build Custom Docker Image",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/airflow_scripts/create_dockerfile.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--requirements", "${workspaceFolder}/dags/requirements.txt"
+            ]
+        },
+        {
+            "name": "Airflow: Create UV Docker Setup",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/airflow_scripts/generate_airflow_uv_config.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--output-dir", "C:\\Users\\orgrd\\workspace\\airflow-uv",
+                "--dags-source", "${workspaceFolder}/dags"
+            ]
+        },
+        {
+            "name": "Airflow: Fix DAG Dependencies",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/airflow_scripts/fix_dependencies.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dags-dir", "${workspaceFolder}/dags",
+                "--add-virtualenv"
+            ]
         }
     ],
     "compounds": [
@@ -146,7 +244,7 @@
         {
             "name": "Temporal: Complete Setup",
             "configurations": [
-                "Temporal: Worker", 
+                "Temporal: Worker",
                 "Temporal: Debug Status",
                 "Temporal: Start Workflow"
             ],
@@ -165,6 +263,15 @@
             "presentation": {
                 "group": "Temporal",
                 "order": 3
+            },
+            "stopAll": true
+        },
+        {
+            "name": "Airflow: Start Services & Run DAG",
+            "configurations": ["Airflow: Start Local Services", "Airflow: Start DAG"],
+            "presentation": {
+                "group": "Airflow",
+                "order": 1
             },
             "stopAll": true
         }
