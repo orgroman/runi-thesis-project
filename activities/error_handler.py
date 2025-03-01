@@ -68,7 +68,7 @@ async def handle_batch_error(batch_request: BatchRequest, api_key: str) -> Batch
                 activity.logger.error(f"Failed to cancel batch {batch_request.batch_id}: {str(e)}")
             
             # Reset file status to allow resubmission
-            files_collection = db.files
+            files_collection = db.openai_files  # Changed from "files" to "openai_files"
             files_collection.update_one(
                 {"_id": ObjectId(batch_request.file_id)},
                 {"$set": {"status": "uploaded", "batch_id": None}}

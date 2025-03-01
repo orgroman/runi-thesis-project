@@ -54,12 +54,12 @@ def setup_collections():
     """
     db = get_database()
     
-    # Files collection
-    if "files" not in db.list_collection_names():
-        db.create_collection("files")
-        db.files.create_index("openai_file_id")
-        db.files.create_index("status")
-        db.files.create_index("jsonl_batch_id")
+    # OpenAI Files collection (renamed from "files" to "openai_files")
+    if "openai_files" not in db.list_collection_names():
+        db.create_collection("openai_files")
+        db.openai_files.create_index("openai_file_id")
+        db.openai_files.create_index("status")
+        db.openai_files.create_index("jsonl_batch_id")
     
     # Batch requests collection
     if "batch_requests" not in db.list_collection_names():

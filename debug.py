@@ -29,12 +29,11 @@ async def check_workflow_status():
         # Get workflow description which includes the status and other metadata
         desc = await handle.describe()
         
-        # Use the correct attribute names for WorkflowExecutionDescription
-        # The id is available on the handle, not on the description
+        # Log the workflow ID
         logger.info(f"Workflow ID: {handle.id}")
         
-        # Access run_id from the description
-        logger.info(f"Run ID: {desc.id.run_id if hasattr(desc, 'id') else 'Unknown'}")
+        # In the Python SDK, desc.id is the run ID directly
+        logger.info(f"Run ID: {desc.id}")
         
         # Log the status
         logger.info(f"Status: {desc.status}")

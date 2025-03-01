@@ -32,7 +32,7 @@ async def register_file_in_mongodb(jsonl_batch_id: str) -> FileMetadata:
         client = get_mongo_client()
         db = client.patent_negation
         jsonl_collection = db.jsonl_batches
-        files_collection = db.files
+        files_collection = db.openai_files  # Changed from "files" to "openai_files"
         
         # Convert string ID to ObjectId
         batch_obj_id = ObjectId(jsonl_batch_id)
