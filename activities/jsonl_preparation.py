@@ -144,7 +144,7 @@ def create_jsonl_line(row: pd.Series) -> Dict[str, Any]:
     
     # Define the body with proper schema
     body = {
-        "model": "gpt-4-turbo-preview",
+        "model": "gpt-4o-mini",
         "messages": messages,
         "response_format": {
             "type": "json_schema",

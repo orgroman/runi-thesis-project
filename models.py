@@ -43,41 +43,16 @@ class NegationResponse(BaseModel):
     short_explanation: str = Field(description="Brief explanation of negation findings")
 
 class FileMetadata(BaseModel):
-    """File metadata for tracking uploads."""
-    file_path: Optional[str] = None
+    """Metadata for a file in OpenAI"""
     file_name: str
     file_size: int
     created_at: datetime
-    uploaded_at: Optional[datetime] = None
-    status: str  # ready, uploaded, processing, completed, error
-    openai_file_id: Optional[str] = None
-    batch_id: Optional[str] = None
-    attempts: int = 0
+    status: str
+    attempts: int
+    jsonl_batch_id: str
     mongodb_id: Optional[str] = None
-    jsonl_batch_id: Optional[str] = None  # Reference to JsonlBatch
-
-    @model_serializer
-    def ser_model(self) -> Dict[str, Any]:
-        # Manually build dictionary to avoid recursion with model_dump()
-        data = {
-            "file_name": self.file_name,
-            "file_size": self.file_size,
-            "status": self.status,
-            "attempts": self.attempts
-        }
-        
-        # Handle datetime fields
-        if hasattr(self, 'created_at') and self.created_at is not None:
-            data["created_at"] = self.created_at.isoformat()
-        if hasattr(self, 'uploaded_at') and self.uploaded_at is not None:
-            data["uploaded_at"] = self.uploaded_at.isoformat()
-            
-        # Add optional fields if present
-        for field in ["file_path", "openai_file_id", "batch_id", "mongodb_id", "jsonl_batch_id"]:
-            if getattr(self, field, None) is not None:
-                data[field] = getattr(self, field)
-            
-        return data
+    openai_file_id: Optional[str] = None
+    uploaded_at: Optional[datetime] = None
 
 class BatchRequest(BaseModel):
     """OpenAI batch request metadata."""

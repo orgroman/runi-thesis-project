@@ -203,3 +203,36 @@ async def register_files_batch_async(jsonl_batch_ids: List[str], concurrency_lim
     
     logger.info(f"Successfully registered {len(file_metadatas)} of {len(jsonl_batch_ids)} JSONL batches")
     return file_metadatas
+
+async def check_collection_exists(db_name=None, collection_name=None, client=None):
+    """
+    Check if a collection exists in the MongoDB database
+    
+    Args:
+        db_name: Database name (defaults to DB_NAME from config or env var)
+        collection_name: Collection name to check
+        client: Optional existing MongoDB client
+        
+    Returns:
+        bool: True if the collection exists, False otherwise
+    """
+    if client is None:
+        # Use the singleton client if none provided
+        global _async_mongo_client
+        if _async_mongo_client is None:
+            mongodb_uri = os.getenv("MONGO_URI", "mongodb://user:pass@localhost:27017")
+            _async_mongo_client = AsyncIOMotorClient(mongodb_uri)
+        client = _async_mongo_client
+    
+    if db_name is None:
+        db_name = os.getenv("MONGO_DB", "patent_negation")
+    
+    db = client[db_name]
+    
+    # Get list of all collections in the database
+    collections = await db.list_collection_names()
+    
+    exists = collection_name in collections
+    logger.debug(f"Collection '{collection_name}' {'exists' if exists else 'does not exist'} in database '{db_name}'")
+    
+    return exists

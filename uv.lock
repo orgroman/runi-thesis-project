@@ -105,6 +105,15 @@ wheels = [
 ]
 
 [[package]]
+name = "aiolimiter"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/23/b52debf471f7a1e42e362d959a3982bdcb4fe13a5d46e63d28868807a79c/aiolimiter-1.2.1.tar.gz", hash = "sha256:e02a37ea1a855d9e832252a105420ad4d15011505512a1a1d814647451b5cca9", size = 7185 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/ba/df6e8e1045aebc4778d19b8a3a9bc1808adb1619ba94ca354d9ba17d86c3/aiolimiter-1.2.1-py3-none-any.whl", hash = "sha256:d3f249e9059a20badcb56b61601a83556133655c11d1eb3dd3e04ff069e5f3c7", size = 6711 },
+]
+
+[[package]]
 name = "aiormq"
 version = "6.8.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2891,6 +2900,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pydash"
+version = "8.0.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2f/24/91c037f47e434172c2112d65c00c84d475a6715425e3315ba2cbb7a87e66/pydash-8.0.5.tar.gz", hash = "sha256:7cc44ebfe5d362f4f5f06c74c8684143c5ac481376b059ff02570705523f9e2e", size = 164861 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/86/e74c978800131c657fc5145f2c1c63e0cea01a49b6216f729cf77a2e1edf/pydash-8.0.5-py3-none-any.whl", hash = "sha256:b2625f8981862e19911daa07f80ed47b315ce20d9b5eb57aaf97aaf570c3892f", size = 102077 },
+]
+
+[[package]]
 name = "pygments"
 version = "2.19.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3310,6 +3331,7 @@ dependencies = [
     { name = "aio-pika" },
     { name = "aiofiles" },
     { name = "aiohttp" },
+    { name = "aiolimiter" },
     { name = "apache-airflow" },
     { name = "azure-identity" },
     { name = "azure-keyvault" },
@@ -3320,6 +3342,7 @@ dependencies = [
     { name = "pendulum" },
     { name = "psycopg2" },
     { name = "pydantic" },
+    { name = "pydash" },
     { name = "pymongo" },
     { name = "redis" },
     { name = "temporalio" },
@@ -3332,6 +3355,7 @@ requires-dist = [
     { name = "aio-pika", specifier = ">=9.5.4" },
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "aiohttp", specifier = ">=3.11.12" },
+    { name = "aiolimiter", specifier = ">=1.2.1" },
     { name = "apache-airflow", specifier = ">=2.10.5" },
     { name = "azure-identity", specifier = ">=1.20.0" },
     { name = "azure-keyvault", specifier = ">=4.2.0" },
@@ -3342,6 +3366,7 @@ requires-dist = [
     { name = "pendulum", specifier = ">=3.0.0" },
     { name = "psycopg2", specifier = ">=2.9.10" },
     { name = "pydantic", specifier = ">=2.10.6" },
+    { name = "pydash", specifier = ">=8.0.5" },
     { name = "pymongo", specifier = ">=4.11.1" },
     { name = "redis", specifier = ">=5.2.1" },
     { name = "temporalio", specifier = ">=1.10.0" },

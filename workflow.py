@@ -134,3 +134,5 @@ class PatentNegationAnalysisWorkflow:
                         start_to_close_timeout=timedelta(minutes=5),
                         retry_policy=RetryPolicy(maximum_attempts=3),
                     )
+                except Exception as e:
+                    workflow.logger.error(f"Failed to register file: {str(e)}")
