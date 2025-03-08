@@ -9,7 +9,7 @@ MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://user:pass@localhost:27017")
 DB_NAME = "patent_negation"
 
 # MongoDB collection names
-JSONL_BATCHES_COLLECTION = "jsonl_batches"
+JSONL_BATCHES_COLLECTION = "jsonl_b_batches"
 OPENAI_FILES_COLLECTION = "openai_files"
 BATCH_REQUESTS_COLLECTION = "batch_requests"
 COMPLETED_BATCHES_COLLECTION = "completed_batches"

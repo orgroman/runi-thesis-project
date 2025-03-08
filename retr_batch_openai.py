@@ -21,10 +21,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(messa
 logger = logging.getLogger(__name__)
 
 # MongoDB collection names
-JSONL_BATCHES_COLLECTION = "jsonl_batches"
-OPENAI_FILES_COLLECTION = "openai_files"
-BATCH_REQUESTS_COLLECTION = "batch_requests"
-COMPLETED_BATCHES_COLLECTION = "completed_batches"
+JSONL_BATCHES_COLLECTION = "jsonl_b_batches"
+OPENAI_FILES_COLLECTION = "openai_files_b"
+BATCH_REQUESTS_COLLECTION = "batch_requests_b"
+COMPLETED_BATCHES_COLLECTION = "completed_batches_b"
+ANNOTATED_SAMPLES_COLLECTION = "annotated_samples_b"
 DB_NAME = "patent_negation"
 
 # Polling configuration
@@ -151,6 +152,7 @@ async def handle_file_management(openai_client: AsyncOpenAI, mongodb_client, db_
         batch_requests = mongodb_client[db_name][BATCH_REQUESTS_COLLECTION]
         completed_batches = mongodb_client[db_name][COMPLETED_BATCHES_COLLECTION]
         jsonl_batches_collection = mongodb_client[db_name][JSONL_BATCHES_COLLECTION]
+        annotated_samples_collection = mongodb_client[db_name][ANNOTATED_SAMPLES_COLLECTION]
 
         # check if the files_collection is empty if so, then we need to upload all the jsonl files from the collection jsonl_batches
         # we need to limit the concurrent uploads to 5
@@ -246,8 +248,15 @@ async def handle_file_management(openai_client: AsyncOpenAI, mongodb_client, db_
                                         "output_version": "v2",
                                         "completed_at": datetime.now()
                                     }
+
+                                    input_batch = await openai_client.files.content(openai_file_id)
+                                    input_samples = [json.loads(line) for line in input_batch.text.splitlines()]
+                                    final_doc = {
+                                        "input_samples": input_samples,
+                                        "openai_results": response_list
+                                    }
                                     
-                                    await completed_batches.insert_one(batch_result_doc)
+                                    await annotated_samples_collection.insert_one(final_doc)
                                     await batch_requests.delete_one({"_id": batch_request["_id"]})
                                     logger.info(f"Batch request {batch_request['batch_id']} completed and saved")
                                 except Exception as e:

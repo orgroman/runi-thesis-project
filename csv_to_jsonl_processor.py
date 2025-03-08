@@ -94,7 +94,7 @@ async def process_csv_to_jsonl_batches(
     csv_path: str,
     output_dir: str = None,
     batch_size: int = 1000,
-    text_column: str = "text",
+    text_column: str = "text_b",
     mongodb_uri: str = None,
     db_name: str = None,
     collection_name: str = None
@@ -270,7 +270,7 @@ async def main():
     #parser.add_argument("csv_path", help="Path to CSV file")
     parser.add_argument("--output-dir", help="Directory to store JSONL files")
     parser.add_argument("--batch-size", type=int, default=1000, help="Number of rows per batch")
-    parser.add_argument("--text-column", default="text", help="Column containing text to analyze")
+    parser.add_argument("--text-column", default="text_b", help="Column containing text to analyze")
     parser.add_argument("--mongodb-uri", help="MongoDB URI")
     parser.add_argument("--db-name", help="MongoDB database name")
     parser.add_argument("--collection-name", help="MongoDB collection name")
