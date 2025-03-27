@@ -41,6 +41,7 @@ openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 ANNOTATED_SAMPLES_COLLECTION = "annotated_samples"
 ANNOTATED_SAMPLES_B_COLLECTION = "annotated_samples_b"
+ANNOTATED_PAIRS_COLLECTION = "annotated_pairs"
 
 async def construct_annotated_dataset():
     completed_coll = mongodb_client["patent_negation"][ANNOTATED_SAMPLES_COLLECTION]
@@ -95,14 +96,17 @@ async def construct_annotated_dataset():
     # Filter out samples that don't have both text_a and text_b
     annotated_samples = {k: v for k, v in annotated_samples.items() if "text_a" in v and "text_b" in v}
 
-    # 
-
+    # Save the annotated samples to the database
+    annotated_pairs_coll = mongodb_client["patent_negation"][ANNOTATED_PAIRS_COLLECTION]
+    docs = []
+    for key, value in annotated_samples.items():
+        docs.append({
+            "annotated_sample": value
+        })
+    
+    await annotated_pairs_coll.insert_many(docs)
     
     print('done')
-
-
-
-
 
 
 
