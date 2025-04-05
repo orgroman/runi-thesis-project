@@ -74,8 +74,8 @@ def standarize_dataset(dataset_file: str) -> Dict:
                 logger.warning(f"Cache file {standardized_file} is corrupted. Regenerating...")
     
     logger.info("Standardized file not found in cache. Proceeding to generate a new one.")
-    data_dict = generate_standardized_records(dataset_file)
-    logger.debug(f"Generated {len(data_dict)} records from the dataset")
+    standardized_records = generate_standardized_records(dataset_file)
+    logger.debug(f"Generated {len(standardized_records)} records from the dataset")
         
     # Save to cache
     with open(standardized_file, 'w') as f:
@@ -87,13 +87,13 @@ def standarize_dataset(dataset_file: str) -> Dict:
     cache_map[str(dataset_file)] = {
         "standardized_file": str(standardized_file),
         "original_file": str(dataset_file),            
-        "num_records": len(data_dict),
+        "num_records": len(standardized_records),
         "last_updated": pd.Timestamp.now().isoformat()
     }
 
     save_cache_map(cache_map, patentmatch_dir)
     
-    logger.info(f"Transformed {len(data_dict)} records to standardized format and saved to {standardized_file}")
+    logger.info(f"Transformed {len(standardized_records)} records to standardized format and saved to {standardized_file}")
     return standardized_records
 
 class PatentMatchDataset:
