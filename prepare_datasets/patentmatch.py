@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 from .utils import get_cache_dir, load_cache_map, save_cache_map
 
-def standarize_dataset(dataset_file: str, cache_dir: str = None) -> Dict:
+def standarize_dataset(dataset_file: str) -> Dict:
     """
     Transform the input data into a standardized format with caching support.
     
