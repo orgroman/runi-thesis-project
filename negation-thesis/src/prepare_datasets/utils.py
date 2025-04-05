@@ -15,11 +15,15 @@ def get_cache_dir(dataset_dir: Union[str, Path]) -> Path:
     env_name = "THESIS_CACHE_DIR"
     cache_dir = os.environ.get(env_name)
     logger.debug(f"Cache directory provided from env {env_name}: {cache_dir}")
-    target_cache_dir = Path(cache_dir)
+    default_cache_dir = Path.home() / ".thesis_cache" / "datasets"
+
+    target_cache_dir = default_cache_dir
     if cache_dir is None:
-        logger.debug("No cache directory provided, using default.")
-        target_cache_dir = Path.home() / ".thesis_cache" / "datasets"
-                
+        logger.debug("Cache directory not provided, using default.")
+    else:
+        logger.debug(f"Cache directory provided from env {env_name}: {cache_dir}")
+        target_cache_dir = Path(cache_dir)
+                        
     # Create the directory if it doesn't exist
     target_cache_dir = target_cache_dir / dataset_dir
     target_cache_dir.mkdir(parents=True, exist_ok=True)
