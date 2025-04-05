@@ -75,9 +75,12 @@ def standarize_dataset(dataset_file: str) -> Dict:
     
     logger.info("Standardized file not found in cache. Proceeding to generate a new one.")
     data_dict = generate_standardized_records(dataset_file)
+    logger.debug(f"Generated {len(data_dict)} records from the dataset")
         
     # Save to cache
     with open(standardized_file, 'w') as f:
+        # Save the standardized records to a JSON file
+        logger.info(f"Saving standardized records to {standardized_file}")
         json.dump(standardized_records, f, indent=4)
     
     # Update cache map

@@ -41,6 +41,7 @@ def load_cache_map(dataset_cache_dir: Path) -> dict:
     Returns:
         dict: The loaded cache map.
     """
+    logger.debug(f"Loading cache map from {dataset_cache_dir}")
     cache_map_path = dataset_cache_dir / "cache_map.json"
     if cache_map_path.exists():
         with open(cache_map_path, 'r') as f:
@@ -59,6 +60,7 @@ def save_cache_map(cache_map: dict, dataset_cache_dir: Path) -> None:
         cache_map (dict): The cache map to save.
         cache_dir (Path): The path to the cache directory.
     """
+    logger.debug(f"Saving cache map: {cache_map}")
     cache_map_path = dataset_cache_dir / "cache_map.json"
     with open(cache_map_path, 'w') as f:
         json.dump(cache_map, f, indent=4)
