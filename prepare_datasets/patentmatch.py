@@ -6,6 +6,33 @@ import logging
 logger = logging.getLogger(__name__)
 from .utils import get_cache_dir, load_cache_map, save_cache_map
 
+def generate_standardized_records(dataset_file: str) -> Dict:
+    """
+    Generate standardized records from the input dataset.
+    
+    Args:
+        dataset_file (str): The path to the dataset file.
+        
+    Returns:
+        dict: The standardized records.
+    """
+    logger.info(f"Loading and standardizing dataset from {dataset_file}")
+    
+    # Load the dataset
+    df = pd.read_csv(dataset_file, sep='\t', header=0, index_col=0)
+    data_dict = df.to_dict(orient='records')
+    
+    # Standardize the records
+    standardized_records = {}
+    for idx, record in enumerate(data_dict):
+        standardized_records[str(idx)] = {
+            "q1": record['text'],
+            "doc1": record['text_b'],            
+            "metadata": record
+        }
+    
+    return standardized_records
+
 def standarize_dataset(dataset_file: str) -> Dict:
     """
     Transform the input data into a standardized format with caching support.
@@ -46,21 +73,8 @@ def standarize_dataset(dataset_file: str) -> Dict:
                 logger.warning(f"Cache file {standardized_file} is corrupted. Regenerating...")
     
     logger.info("Standardized file not found in cache. Proceeding to generate a new one.")
-    
-    # Load and process the dataset
-    df = pd.read_csv(dataset_file, sep='\t', header=0, index_col=0)
-    data_dict = df.to_dict(orient='records')
-    logger.debug(f"Loaded {len(data_dict)} records from {dataset_file}")
-    
-    # Standardize the records
-    standardized_records = {}
-    for idx, record in enumerate(data_dict):
-        standardized_records[str(idx)] = {
-            "q1": record['text'],
-            "doc1": record['text_b'],            
-            "metadata": record
-        }
-    
+    data_dict = generate_standardized_records(dataset_file)
+        
     # Save to cache
     with open(standardized_file, 'w') as f:
         json.dump(standardized_records, f, indent=4)
