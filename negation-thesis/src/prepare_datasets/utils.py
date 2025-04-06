@@ -9,7 +9,7 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 
-def prepare_batch_request(
+def prepare_openai_batch_request(
     custom_id: str,
     messages: List[Dict],
     schema: Type[BaseModel],
