@@ -27,3 +27,6 @@ dependencies = [
     "tenacity>=9.0.0",
     "tqdm>=4.67.1",
 ]
+
+[tool.uv.workspace]
+members = ["negation-thesis", "negation-thesis/src/check-1"]

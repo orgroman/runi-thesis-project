@@ -1,10 +1,13 @@
+import asyncio
 import random
-from typing import Dict, List
+from typing import Dict, List, Union
 from uuid import uuid4
 import pandas as pd
 from pathlib import Path
 import json
 import logging
+import openai
+import os
 
 from pydantic import BaseModel
 from .utils import (
@@ -16,6 +19,9 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
+openai_async_client = openai.AsyncClient(
+    api_key=os.getenv("THESIS_OPENAI_API_KEY"),
+)
 
 class ResponseSchema(BaseModel):
     q2: str
@@ -162,6 +168,57 @@ def prepare_openai_jsonl(records: List[Dict]) -> List[str]:
         openai_records.append(openai_record)
     return openai_records
 
+def prepare_batch_splits(records: List[Dict], batch_size: int) -> List[List[Dict]]:
+    """
+    Split the records into batches of the specified size.
+    """
+    logger.info(f"Preparing batch splits for {len(records)} records with batch size {batch_size}")
+    batches = []
+    for i in range(0, len(records), batch_size):
+        batch_records = records[i : i + batch_size]
+        batches.append(batch_records)
+    logger.info(f"Prepared {len(batches)} batches")
+    return batches
+
+async def prepare_openai_batch_files(jsonl_files: List[Union[Path,str]]) -> List[str]:
+    """
+    Prepare the OpenAI batch files for processing.
+    """
+    logger.info(f"Preparing OpenAI batch files for {len(jsonl_files)} files")
+    futures = []
+        
+    for jsonl_file in jsonl_files:
+        futures.append(
+            openai_async_client.files.create(
+                file=open(jsonl_file, "rb"),
+                purpose="batch",
+            )
+        )
+    
+    openai_files = asyncio.gather(*futures)
+    logger.info(f"Prepared {len(openai_files)} OpenAI batch files")
+    return openai_files
+
+async def prepare_openai_batch_requests(openai_files) -> List[str]:
+    """
+    Prepare the OpenAI batch requests for processing.
+    """
+    logger.info(f"Preparing OpenAI batch requests for {len(openai_files)} files")
+    futures = []
+        
+    for openai_file in openai_files:
+        futures.append(
+            openai_async_client.batches.create(
+                input_file_id=openai_file["id"],
+                endpoint="/v1/chat/completions",
+                completion_window="24h",
+                metadata={"type": "patent_negation"}
+            )
+        )
+    
+    openai_batch_requests = asyncio.gather(*futures)
+    logger.info(f"Prepared {len(openai_batch_requests)} OpenAI batch requests")
+    return openai_batch_requests
 
 class PatentMatchAnnotator:
     """
@@ -171,9 +228,14 @@ class PatentMatchAnnotator:
 
     def __init__(self,
                  openai_records: List[Dict],
-                 batch_size: int = 1000,):
+                 batch_size: int = 1000,
+                 annotation_id: str = "annotation"):
         self.openai_records = openai_records
         self.batch_size = batch_size
+        self.annotation_id = annotation_id
+        self.openai_files = []
+        self.openai_batch_requests = {}
+        
         
     @classmethod
     def from_records(cls, records: List[Dict], **kwargs):
@@ -190,45 +252,142 @@ class PatentMatchAnnotator:
         
         return cls.from_records(records, **kwargs)
 
+            
     async def create_batch_requests(self):
         """
         Create the batch requests for OpenAI API.
         """
         logger.info(f"Creating batch requests for {len(self.openai_records)} records")
-        get_cache_dir("patentmatch")
-        # Placeholder for the actual batch request creation logic
-        pass
+        batch_dir = get_cache_dir("patentmatch") / self.annotation_id / "batches"
+        batch_dir.mkdir(parents=True, exist_ok=True)
+        jsonl_dir = batch_dir / "jsonl_files"
+        jsonl_dir.mkdir(parents=True, exist_ok=True)
+        batch_openai_files_dir = batch_dir / "openai_files"
+        batch_openai_files_dir.mkdir(parents=True, exist_ok=True)
+        batch_openai_requests_dir = batch_dir / "openai_requests"
+        batch_openai_requests_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Batch directory: {batch_dir}")
+        # Split the records into batches and write each one to each it's own jsonl file
+        batch_jsonl_files = list(jsonl_dir.glob("*.jsonl"))
+        if not batch_jsonl_files:
+            logger.info(f"No batch jsonl files found in {jsonl_dir}. Creating new ones.")
+            batches = prepare_batch_splits(self.openai_records, self.batch_size)
+            for i, batch in enumerate(batches):
+                batch_file = jsonl_dir / f"batch_{i}.jsonl"
+                with open(batch_file, "w") as f:
+                    for record in batch:
+                        f.write(json.dumps(record) + "\n")
+                logger.debug(f"Created batch file: {batch_file}")
+        else:
+            logger.info(f"Found {len(batch_jsonl_files)} batch jsonl files in {jsonl_dir}.")
+
+        
+        logger.info(f"Created {len(batch_jsonl_files)} batch jsonl files\n"
+                    f"Creating OpenAI batch requests")
+        
+        self.openai_files = [json.load(f) for f in batch_openai_files_dir.glob("*.json")]
+        if not self.openai_files:
+            logger.info(f"No OpenAI files found in {batch_openai_files_dir}. Creating new ones.")
+            # Create OpenAI batch file request for each jsonl file (async)
+            self.openai_files = await prepare_openai_batch_files(batch_jsonl_files)
+            logger.info(f"Created {len(self.openai_files)} OpenAI files")
+            # Save all file requests to cache dir
+            for response in self.openai_files:
+                # Save the file response to the cache dir
+                file_path = batch_openai_files_dir / f"{response['id']}.json"
+                with open(file_path, "w") as f:
+                    json.dump(response, f, indent=4)
+                logger.debug(f"Saved OpenAI file response to {file_path}")
+        else:
+            logger.info(f"Found {len(self.openai_files)} OpenAI files in {batch_openai_files_dir}.")
+        
+        
+        # Create OpenAI batch file request for each jsonl file (async)
+        batch_requests = [json.load(f) for f in batch_openai_requests_dir.glob("*.json")]
+        self.openai_batch_requests = {x["id"]: {
+            "openai_file_id": x["id"],
+            "batch_id": x["id"],
+            "status": x["status"],
+        } for x in batch_requests}
+        
+        if not batch_requests:
+            logger.info(f"No OpenAI batch requests found in {batch_openai_requests_dir}. Creating new ones.")
+            # Create OpenAI batch request for each file response (async)
+            batch_requests = await prepare_openai_batch_requests(self.openai_files)
+            logger.info(f"Created {len(batch_requests)} OpenAI batch requests")
+            # Save all file requests to cache dir
+            for response in batch_requests:
+                # Save the file response to the cache dir
+                file_path = batch_openai_requests_dir / f"{response['id']}.json"
+                with open(file_path, "w") as f:
+                    json.dump(response, f, indent=4)
+                logger.debug(f"Saved OpenAI batch request to {file_path}")                
+        else:
+            logger.info(f"Found {len(batch_requests)} OpenAI batch requests in {batch_openai_requests_dir}.")
             
-
-    def load_jsonl_batches(self, batch_size: int = 1000):
+        
+        logger.info(f"Created {len(batch_requests)} OpenAI batch requests")
+        
+        
+    async def long_poll_results(self):
         """
-        Load the jsonl batches from the file.
+        Long poll the OpenAI API for results.
+        The status of a given Batch object can be any of the following:
 
-        Args:
-            batch_size (int): The size of each batch for annotation.
+        Status	Description
+        validating	the input file is being validated before the batch can begin
+        failed	the input file has failed the validation process
+        in_progress	the input file was successfully validated and the batch is currently being run
+        finalizing	the batch has completed and the results are being prepared
+        completed	the batch has been completed and the results are ready
+        expired	the batch was not able to be completed within the 24-hour time window
+        cancelling	the batch is being cancelled (may take up to 10 minutes)
+        cancelled	the batch was cancelled        
         """
-        logger.info(f"Loading jsonl batches with batch size {batch_size}")
-        self.openai_records = prepare_openai_jsonl(self.openai_records)
+        logger.info(f"Long polling OpenAI API for results")
+        batch_dir = get_cache_dir("patentmatch") / self.annotation_id / "batches"
+        batch_openai_files_dir = batch_dir / "openai_files"
+        batch_openai_requests_dir = batch_dir / "openai_requests"
+        
+        # In case the status requires recreation, we will recreate the batch request and remove the old one
+        recreate_statuses = ["expired", "failed", "cancelled", "cancelling"]
+                
+        while True:
+            logger.info(f"Long polling OpenAI API for results")
+            # Load all openai batch requests from cache dir
+            completed_count = len([x for x in self.openai_batch_requests.values() if x["status"] == "completed"])
+            logger.debug(f"Completed batch requests: {completed_count}/{len(self.openai_batch_requests)}")
+            if completed_count == len(self.openai_batch_requests):
+                logger.info(f"All batch requests completed")
+                break
             
-    def annotate_batch(self, records: List[Dict]):
-        """
-        Annotate a batch of records using chatgpt.
-
-        Args:
-            records (List[Dict]): The records to annotate.
-        """
-        # Placeholder for the actual annotation logic
-        pass
-
-    def save_results(self, output_file: str):
-        """
-        Save the annotated results to a file.
-
-        Args:
-            output_file (str): The path to the output file.
-        """
-        with open(output_file, "w") as f:
-            json.dump(self.annotated_records, f, indent=4)
+            for openai_batch in self.openai_batch_requests.values():
+                # Check if the batch request is complete
+                response = await openai_async_client.batches.retrieve(openai_batch["batch_id"])
+                status = response["status"]
+                self.openai_batch_requests[openai_batch["batch_id"]]["status"] = status
+                logger.debug(f"Batch request {openai_batch['batch_id']} status: {status}")
+                # If the batch request is complete, save the results to the cache dir
+                if status in recreate_statuses:
+                    # Recreate the batch request
+                    logger.info(f"Recreating batch request {openai_batch['batch_id']}")
+                    batch_response = await openai_async_client.batches.create(
+                        input_file_id=openai_batch["openai_file_id"],
+                        endpoint="/v1/chat/completions",
+                        completion_window="24h",
+                        metadata={"type": "patent_negation"}
+                    )
+                    self.openai_batch_requests[openai_batch["batch_id"]]["status"] = batch_response["status"]
+                
+                if status == "completed":
+                    # Save the results to the cache dir
+                    logger.info(f"Batch request {openai_batch['batch_id']} succeeded")
+                    batch_response = await openai_async_client.batches.retrieve(openai_batch["batch_id"])
+                    file_path = batch_openai_requests_dir / f"{batch_response['id']}.json"
+                    with open(file_path, "w") as f:
+                        json.dump(batch_response, f, indent=4)
+                    logger.debug(f"Saved OpenAI batch request to {file_path}")        
+                            
 
 
 class PatentMatchDataset:
@@ -253,7 +412,10 @@ class PatentMatchDataset:
         standarized_records = standarize_dataset(dataset_file)
         return cls(standarized_records=standarized_records)
     
-    def get_annotator(self, batch_size: int = 1000, sample_size: int = 0):
+    def get_annotator(self, 
+                      batch_size: int = 1000,
+                      sample_size: int = 0,
+                      annotation_id: str = "annotation"):
         """
         Get the annotator for the dataset.
 
@@ -268,7 +430,9 @@ class PatentMatchDataset:
         if sample_size > 0:
             logger.info(f"Sampling {sample_size} records from {len(self.standarized_records)} total records")    
             sampled_records = random.sample(self.standarized_records, sample_size)
-            return PatentMatchAnnotator.from_records(sampled_records, batch_size=batch_size)
+            return PatentMatchAnnotator.from_records(sampled_records,
+                                                     batch_size=batch_size,
+                                                     annotation_id=annotation_id)
 
     def annotate_negation(self, batch_size: int = 1000, random_sample_size: int = 0):
         """
